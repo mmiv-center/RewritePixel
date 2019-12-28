@@ -144,8 +144,11 @@ void *ReadFilesThread(void *voidparams) {
     //  maxval = 0xffff;
     int HEIGHT = sf.ToInt(gdcm::Tag(0x0028, 0x0010)); // acquisition matrix
     int WIDTH = sf.ToInt(gdcm::Tag(0x0028, 0x0011));  // acquisition matrix
-    gdcm::Image *im = new gdcm::Image();
-    im = reader.GetImage();                   // is this color or grayscale????
+    gdcm::Image im = new gdcm::Image();
+    im = reader.GetImage(); // is this color or grayscale????
+    ushort[] theData = new ushort[WIDTH * HEIGHT];
+    im.GetArray(theData);
+
     PIX *pixs = pixCreate(WIDTH, HEIGHT, 32); // rgba colors
     for (i = 0; i < HEIGHT; i++) {
       for (j = 0; j < WIDTH; j++) {
