@@ -131,210 +131,55 @@ void *ReadFilesThread(void *voidparams) {
 
     std::string filenamestring = "";
     std::string seriesdirname = ""; // only used if byseries is true
-    // gdcm::Trace::SetDebug( true );
-    // gdcm::Trace::SetWarning( true );
-    // gdcm::Trace::SetError( true);
+                                    // gdcm::Trace::SetDebug( true );
+                                    // gdcm::Trace::SetWarning( true );
+                                    // gdcm::Trace::SetError( true);
 
     // lets add the private group entries
     // gdcm::AddTag(gdcm::Tag(0x65010010), gdcm::VR::LO, "MY NEW DATASET",
     // reader.GetFile().GetDataSet());
-    /*
-        maxval = 0xff;
-        if (DEPTH == 16)
-            maxval = 0xffff;
 
-        pixs = pixCreate(WIDTH, HEIGHT, DEPTH);
-        for (i = 0; i < HEIGHT; i++) {
-          for (j = 0; j < WIDTH; j++) {
-                val = maxval * j / WIDTH;
-                pixSetPixel(pixs, j, i, val);
-          }
-        }
-    */
+    // maxval = 0xff;
+    // if (DEPTH == 16)
+    //  maxval = 0xffff;
+    int HEIGHT = sf.ToInt(gdcm::Tag(0x0028, 0x0010)); // acquisition matrix
+    int WIDTH = sf.ToInt(gdcm::Tag(0x0028, 0x0011));  // acquisition matrix
+    gdcm::Image *im = new gdcm::Image();
+    im = reader.GetImage();                   // is this color or grayscale????
+    PIX *pixs = pixCreate(WIDTH, HEIGHT, 32); // rgba colors
+    for (i = 0; i < HEIGHT; i++) {
+      for (j = 0; j < WIDTH; j++) {
+        l_int32 val;
+        l_int32 red = 0;
+        l_int32 green = 0;
+        l_int32 blue = 0;
+        // if im is grayscale or color
 
-    /*
-      Pix *image = pixRead("/usr/src/tesseract/testing/phototest.tif");
-      tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
-      api->Init(NULL, "eng+nor");
-      api->SetImage(image);
-      api->Recognize(0);
-      tesseract::ResultIterator* ri = api->GetIterator();
-      tesseract::PageIteratorLevel level = tesseract::RIL_WORD;
-      if (ri != 0) {
-        do {
-          const char* word = ri->GetUTF8Text(level);
-          float conf = ri->Confidence(level);
-          int x1, y1, x2, y2;
-          ri->BoundingBox(level, &x1, &y1, &x2, &y2);
-          printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n",
-                   word, conf, x1, y1, x2, y2);
-          delete[] word;
-        } while (ri->Next(level));
-      } */
+        composeRGBPixel(red, green, blue, &val);
+        //    val = maxval * j / WIDTH;
 
-    // now walk through the list of entries and apply each one to the current ds
-    for (int i = 0; i < work.size(); i++) {
-      // fprintf(stdout, "convert tag: %d/%lu\n", i, work.size());
-      std::string tag1(work[i][0]);
-      std::string tag2(work[i][1]);
-      std::string which(work[i][2]);
-      std::string what("replace");
-      if (work[i].size() > 3) {
-        what = work[i][3];
+        pixSetPixel(pixs, j, i, val);
       }
-      int a = strtol(tag1.c_str(), NULL, 16);
-      int b = strtol(tag2.c_str(), NULL, 16);
-      // fprintf(stdout, "Tag: %s %04X %04X\n", which.c_str(), a, b);
-      if (which == "BlockOwner" && what != "replace") {
-        anon.Replace(gdcm::Tag(a, b), what.c_str());
-        continue;
-      }
-      if (which == "ProjectName") {
-        anon.Replace(gdcm::Tag(a, b), params->projectname.c_str());
-        continue;
-      }
-      if (what == "replace") {
-        anon.Replace(gdcm::Tag(a, b), which.c_str());
-        continue;
-      }
-      if (what == "remove") {
-        anon.Remove(gdcm::Tag(a, b));
-        continue;
-      }
-      if (what == "empty") {
-        anon.Empty(gdcm::Tag(a, b));
-        continue;
-      }
-      if (what == "hashuid+PROJECTNAME") {
-        std::string val = sf.ToString(gdcm::Tag(a, b));
-        std::string hash = SHA256::digestString(val + params->projectname).toHex();
-        if (which == "SOPInstanceUID") // keep a copy as the filename for the output
-          filenamestring = hash.c_str();
-
-        if (which == "SeriesInstanceUID")
-          seriesdirname = hash.c_str();
-
-        if (which == "StudyInstanceUID") {
-          // we want to keep a mapping of the old and new study instance uids
-          params->byThreadStudyInstanceUID.insert(
-              std::pair<std::string, std::string>(val, hash)); // should only add this pair once
-        }
-
-        anon.Replace(gdcm::Tag(a, b), hash.c_str());
-        // this does not replace elements inside sequences
-        continue;
-      }
-      if (what == "hashuid" || what == "hash") {
-        std::string val = sf.ToString(gdcm::Tag(a, b));
-        std::string hash = SHA256::digestString(val).toHex();
-        if (which == "SOPInstanceUID") // keep a copy as the filename for the output
-          filenamestring = hash.c_str();
-
-        if (which == "SeriesInstanceUID")
-          seriesdirname = hash.c_str();
-
-        anon.Replace(gdcm::Tag(a, b), hash.c_str());
-        continue;
-      }
-      if (what == "keep") {
-        // so we do nothing...
-        continue;
-      }
-      if (what == "incrementdate") {
-        int nd = params->dateincrement;
-        std::string val = sf.ToString(gdcm::Tag(a, b));
-        // parse the date string YYYYMMDD
-        struct sdate date1;
-        if (sscanf(val.c_str(), "%04ld%02ld%02ld", &date1.y, &date1.m, &date1.d) == 3) {
-          // replace with added value
-          long c = gday(date1) + nd;
-          struct sdate date2 = dtf(c);
-          char dat[256];
-          sprintf(dat, "%04ld%02ld%02ld", date2.y, date2.m, date2.d);
-          // fprintf(stdout, "found a date : %s, replace with date: %s\n",
-          // val.c_str(), dat);
-
-          anon.Replace(gdcm::Tag(a, b), dat);
-        } else {
-          // could not read the date here, just remove instead
-          // fprintf(stdout, "Warning: could not parse a date (\"%s\", %04o,
-          // %04o, %s) in %s, remove field instead...\n", val.c_str(), a, b,
-          // which.c_str(), filename);
-          anon.Replace(gdcm::Tag(a, b), "");
-        }
-        continue;
-      }
-      if (what == "YES") {
-        anon.Replace(gdcm::Tag(a, b), "YES");
-        continue;
-      }
-      if (what == "MODIFIED") {
-        anon.Replace(gdcm::Tag(a, b), "MODIFIED");
-        continue;
-      }
-      if (what == "PROJECTNAME") {
-        anon.Replace(gdcm::Tag(a, b), params->projectname.c_str());
-        continue;
-      }
-      if (what == "SITENAME") {
-        anon.Replace(gdcm::Tag(a, b), params->sitename.c_str());
-        continue;
-      }
-      // Some entries have Re-Mapped, that could be a name on the command line or,
-      // by default we should hash the id
-      // fprintf(stdout, "Warning: set to what: %s %s which: %s what: %s\n", tag1.c_str(),
-      // tag2.c_str(), which.c_str(), what.c_str());
-      // fallback, if everything fails we just use the which and set that's field value
-      anon.Replace(gdcm::Tag(a, b), what.c_str());
     }
 
-    // hash of the patient id
-    if (params->patientid == "hashuid") {
-      std::string val = sf.ToString(gdcm::Tag(0x0010, 0x0010));
-      std::string hash = SHA256::digestString(val).toHex();
-      anon.Replace(gdcm::Tag(0x0010, 0x0010), hash.c_str());
-    } else {
-      anon.Replace(gdcm::Tag(0x0010, 0x0010), params->patientid.c_str());
+    //  Pix *image = pixRead("/usr/src/tesseract/testing/phototest.tif");
+    tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
+    api->Init(NULL, "eng+nor");
+    api->SetImage(pixs);
+    api->Recognize(0);
+    tesseract::ResultIterator *ri = api->GetIterator();
+    tesseract::PageIteratorLevel level = tesseract::RIL_WORD;
+    if (ri != 0) {
+      do {
+        const char *word = ri->GetUTF8Text(level);
+        float conf = ri->Confidence(level);
+        int x1, y1, x2, y2;
+        ri->BoundingBox(level, &x1, &y1, &x2, &y2);
+        printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2,
+               y2);
+        delete[] word;
+      } while (ri->Next(level));
     }
-    if (params->patientid == "hashuid") {
-      std::string val = sf.ToString(gdcm::Tag(0x0010, 0x0020));
-      std::string hash = SHA256::digestString(val).toHex();
-      anon.Replace(gdcm::Tag(0x0010, 0x0020), hash.c_str());
-    } else {
-      anon.Replace(gdcm::Tag(0x0010, 0x0020), params->patientid.c_str());
-    }
-
-    // We store the computed StudyInstanceUID in the StudyID tag.
-    // This is used by the default setup of Sectra to identify the study (together with the
-    // AccessionNumber field).
-    std::string anonStudyInstanceUID = sf.ToString(gdcm::Tag(0x0020, 0x000D));
-    anon.Replace(gdcm::Tag(0x0020, 0x0010), anonStudyInstanceUID.c_str());
-
-    // fprintf(stdout, "project name is: %s\n", params->projectname.c_str());
-    // this is a private tag --- does not work yet - we can only remove
-    anon.Remove(gdcm::Tag(0x0013, 0x1010));
-    /*if (!anon.Replace(gdcm::Tag(0x0013, 0x1010), params->projectname.c_str())) {
-      gdcm::Trace::SetDebug( true );
-      gdcm::Trace::SetWarning( true );
-      bool ok = anon.Empty(gdcm::Tag(0x0013, 0x1010)); // empty the field
-                                                       //      if (!ok)
-                                                       //        fprintf(stderr, "failed setting
-    tags 0013,1010 to empty.\n");
-    }*/
-    anon.Remove(gdcm::Tag(0x0013, 0x1013));
-    /*if (!anon.Replace(gdcm::Tag(0x0013, 0x1013), params->sitename.c_str())) {
-      bool ok = anon.Empty(gdcm::Tag(0x0013, 0x1013));
-//      if (!ok)
-//        fprintf(stderr, "failed setting tags 0013,1013 to empty.\n");
-    }*/
-    anon.Remove(gdcm::Tag(0x0013, 0x1011));
-    anon.Remove(gdcm::Tag(0x0013, 0x1012));
-    /*if (!anon.Replace(gdcm::Tag(0x0013, 0x1012), params->sitename.c_str())) {
-      //fprintf(stderr, "Cannot set private tag 0013, 1012, try to set to 0\n");
-      bool ok = anon.Empty(gdcm::Tag(0x0013, 0x1012)); // could fail if the element does not exist
-//      if (!ok)
-//        fprintf(stderr, "failed setting tags 0013,1012 to empty.\n");
-    } */
 
     // ok save the file again
     std::string imageInstanceUID = filenamestring;
