@@ -20,6 +20,7 @@
 #include "gdcmDirectory.h"
 #include "gdcmGlobal.h"
 #include "gdcmImageReader.h"
+#include "gdcmImageWriter.h"
 #include "gdcmReader.h"
 #include "gdcmStringFilter.h"
 #include "gdcmSystem.h"
@@ -112,13 +113,13 @@ void *ReadFilesThread(void *voidparams) {
     gdcm::File &fileToAnon = reader.GetFile();
     anon.SetFile(fileToAnon);
 
-    gdcm::MediaStorage ms;
-    ms.SetFromFile(fileToAnon);
-    if (!gdcm::Defs::GetIODNameFromMediaStorage(ms)) {
-      std::cerr << "The Media Storage Type of your file is not supported: " << ms << std::endl;
-      std::cerr << "Please report" << std::endl;
-      continue;
-    }
+    /*    gdcm::MediaStorage ms;
+        ms.SetFromFile(fileToAnon);
+        if (!gdcm::Defs::GetIODNameFromMediaStorage(ms)) {
+          std::cerr << "The Media Storage Type of your file is not supported: " << ms << std::endl;
+          std::cerr << "Please report" << std::endl;
+          continue;
+        } */
     gdcm::DataSet &ds = fileToAnon.GetDataSet();
 
     gdcm::StringFilter sf;
@@ -129,11 +130,17 @@ void *ReadFilesThread(void *voidparams) {
 
     /*    Tag    Name    Action */
 
-    std::string filenamestring = "";
-    std::string seriesdirname = ""; // only used if byseries is true
-                                    // gdcm::Trace::SetDebug( true );
-                                    // gdcm::Trace::SetWarning( true );
-                                    // gdcm::Trace::SetError( true);
+    int a = strtol("0020", NULL, 16); // Series Instance UID
+    int b = strtol("000E", NULL, 16);
+    std::string seriesdirname = sf.ToString(gdcm::Tag(a, b)); // always store by series
+
+    a = strtol("0008", NULL, 16); // SOP Instance UID
+    b = strtol("0018", NULL, 16);
+    std::string filenamestring = sf.ToString(gdcm::Tag(a, b));
+
+    // gdcm::Trace::SetDebug( true );
+    // gdcm::Trace::SetWarning( true );
+    // gdcm::Trace::SetError( true);
 
     // lets add the private group entries
     // gdcm::AddTag(gdcm::Tag(0x65010010), gdcm::VR::LO, "MY NEW DATASET",
@@ -146,49 +153,124 @@ void *ReadFilesThread(void *voidparams) {
     int WIDTH = atoi(sf.ToString(gdcm::Tag(0x0028, 0x0011)).c_str());  // acquisition matrix
     // gdcm::Image *im = new gdcm::Image();
     gdcm::Pixmap &im = reader.GetPixmap(); // is this color or grayscale????
-    size_t length = im.GetBufferLength();
-    fprintf(stdout, "%ld length data (could be multi-frame) size of a single image is: %d %d\n", length, HEIGHT, WIDTH);
-    char *buffer = new char[length];
-    im.GetBuffer(buffer);
-    // detect the type
-    typedef enum { NO_TYPE = 0, GRAYSCALE = 1, RGB = 2 } ITYPE;
-    ITYPE image_type = NO_TYPE;
-    if (HEIGHT * WIDTH == length) {
-      image_type = GRAYSCALE;
+    if (im.AreOverlaysInPixelData()) {     // we can also have curves in here ... what about curves?
+      for (int i = 0; i < im.GetNumberOfOverlays(); i++) {
+        fprintf(stdout, "Warning: we have found an overlay, we will remove it here.\n");
+        im.RemoveOverlay(i); // TODO: overlays can hide some text - they are not a good way to anonymize a file
+      }
     }
-    if (image_type != GRAYSCALE) {
-      fprintf(stderr, "Error: cannot process unknown image type - non-grayscale image found...\n");
-      continue;
-    }
-
+    // what about the icon image? im.SetIconImage()
+    gdcm::Image gimage = reader.GetImage();
     PIX *pixs = pixCreate(WIDTH, HEIGHT, 32); // rgba colors
-    for (int i = 0; i < HEIGHT; i++) {
-      for (int j = 0; j < WIDTH; j++) {
-        l_uint32 val;
-        l_int32 red = 0;
-        l_int32 green = 0;
-        l_int32 blue = 0;
-        // if im is grayscale or color
-        if (image_type == GRAYSCALE) {
-          red = buffer[i * WIDTH + j];
-          green = buffer[i * WIDTH + j];
-          blue = buffer[i * WIDTH + j];
-        } else {
-          red = buffer[(i * WIDTH + j) * 3 + 0];
-          green = buffer[(i * WIDTH + j) * 3 + 1];
-          blue = buffer[(i * WIDTH + j) * 3 + 2];
+    size_t length = im.GetBufferLength();
+    fprintf(stdout, "%ld buffer length size of a single image is: %dx%d\n", length, HEIGHT, WIDTH);
+    std::vector<char> vbuffer;
+    vbuffer.resize(gimage.GetBufferLength());
+    char *buffer = &vbuffer[0];
+    if (!im.GetBuffer(buffer)) {
+      fprintf(stderr, "Could not get buffer for image data\n");
+    }
+    if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::RGB) {
+      if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) { // hopefully always true
+        fprintf(stdout, "We found RGB data with 8bit!\n");
+        unsigned char *ubuffer = (unsigned char *)buffer;
+        for (int i = 0; i < HEIGHT; i++) {
+          for (int j = 0; j < WIDTH; j++) {
+            l_uint32 val;
+            l_int32 red = 0;
+            l_int32 green = 0;
+            l_int32 blue = 0;
+            // if im is grayscale or color
+            red = ubuffer[(i * WIDTH + j) * 3 + 0];
+            green = ubuffer[(i * WIDTH + j) * 3 + 1];
+            blue = ubuffer[(i * WIDTH + j) * 3 + 2];
+            composeRGBPixel(red, green, blue, &val);
+            pixSetPixel(pixs, j, i, val);
+          }
         }
-        composeRGBPixel(red, green, blue, &val);
-        //    val = maxval * j / WIDTH;
-
-        pixSetPixel(pixs, j, i, val);
+      } else {
+        // color data with not 8bit per channel!
+        fprintf(stderr, "Error: found color data with non-8bit per channel! Unsupported!\n");
+      }
+    } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::MONOCHROME2) {
+      // we can have 8bit or 16bit grayscales here
+      if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
+        fprintf(stdout, "We found MONOCHROME2 data with 8bit!\n");
+        unsigned char *ubuffer = (unsigned char *)buffer;
+        for (int i = 0; i < HEIGHT; i++) {
+          for (int j = 0; j < WIDTH; j++) {
+            l_uint32 val;
+            l_int32 red = 0;
+            l_int32 green = 0;
+            l_int32 blue = 0;
+            // if im is grayscale or color
+            red = ubuffer[i * WIDTH + j];
+            green = ubuffer[i * WIDTH + j];
+            blue = ubuffer[i * WIDTH + j];
+            composeRGBPixel(red, green, blue, &val);
+            pixSetPixel(pixs, j, i, val);
+          }
+        }
+      } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::INT16) { // have not seen an example yet
+        short *buffer16 = (short *)buffer;
+        fprintf(stdout, "We found MONOCHROME2 data with 16bit!\n");
+        for (int i = 0; i < HEIGHT; i++) {
+          for (int j = 0; j < WIDTH; j++) {
+            l_uint32 val;
+            l_int32 red = 0;
+            l_int32 green = 0;
+            l_int32 blue = 0;
+            // if im is grayscale or color, PixelRepresentation is 1, so we have signed values -> 2complement
+            red = (unsigned char)std::min(255, (32768 + buffer16[i * WIDTH + j]) / 255);
+            green = (unsigned char)std::min(255, (32768 + buffer16[i * WIDTH + j]) / 255);
+            blue = (unsigned char)std::min(255, (32768 + buffer16[i * WIDTH + j]) / 255);
+            composeRGBPixel(red, green, blue, &val);
+            pixSetPixel(pixs, j, i, val);
+          }
+        }
+      } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT16) { // we have one example that does not work - every pixel is 0
+        // pixel representation is 0 -> unsigned short
+        unsigned short *buffer16 = (unsigned short *)buffer;
+        // anything non-zero?
+        for (int i = 0; i < WIDTH * HEIGHT * 2; i++) {
+          if (buffer[i] != 0)
+            fprintf(stdout, "\"%d\" ", (int)(buffer[i]));
+        }
+        fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short %dx%d)!\n", HEIGHT, WIDTH);
+        for (int i = 0; i < HEIGHT; i++) {
+          for (int j = 0; j < WIDTH; j++) {
+            l_uint32 val;
+            l_int32 red = 0;
+            l_int32 green = 0;
+            l_int32 blue = 0;
+            // if im is grayscale or color
+            // fprintf(stdout, "%d %d ", ((unsigned char *)(&buffer16[i * WIDTH + j]))[0], ((unsigned char *)(&buffer16[i * WIDTH + j]))[1]);
+            int v = floor((((double)buffer16[i * WIDTH + j] - gimage.GetPixelFormat().GetMin()) / (float)gimage.GetPixelFormat().GetMax()) * 255);
+            red = (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
+            if (v != 0)
+              fprintf(stdout, "%d (%lld %lld)\n", v, gimage.GetPixelFormat().GetMin(), gimage.GetPixelFormat().GetMax());
+            green = (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
+            blue = (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
+            composeRGBPixel(red, green, blue, &val);
+            pixSetPixel(pixs, j, i, val);
+          }
+        }
+      } else {
+        fprintf(stderr, "unknown pixel format in input... nothing is done\n");
       }
     }
 
-    //  Pix *image = pixRead("/usr/src/tesseract/testing/phototest.tif");
+    // it might be good to convert all input images to a common format - regardless of the original
+    // type, this would allow us to have the conversion below only done once.. but we would always
+    // write the same image type back - not very nice...
+    // http://gdcm.sourceforge.net/html/ConvertToQImage_8cxx-example.html
+    std::vector<std::string> safeList = {"Patient", "Name", "Study", "Protocol"};
+
     tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
     api->Init(NULL, "eng+nor"); // this requires a nor.traineddata to be in the /usr/local/Cellar/tesseract/4.1.1/share/tessdata directory
     api->SetImage(pixs);
+    api->SetSourceResolution(70);
+
     api->Recognize(0);
     tesseract::ResultIterator *ri = api->GetIterator();
     tesseract::PageIteratorLevel level = tesseract::RIL_WORD;
@@ -198,10 +280,71 @@ void *ReadFilesThread(void *voidparams) {
         float conf = ri->Confidence(level);
         int x1, y1, x2, y2;
         ri->BoundingBox(level, &x1, &y1, &x2, &y2);
+
+        // we can check against a safe list here
+        if (std::find(safeList.begin(), safeList.end(), word) != safeList.end()) {
+          printf("skip-word: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
+          continue; // found a safeList entry, don't do anything
+        }
+        // check if the word is a number? But we don't want to see dates either...
+
         printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
+        // mask out the bounding box with black
+        if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::RGB) {
+          if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) { // hopefully always true
+                                                                     // change values in the buffer
+            unsigned char *ubuffer = (unsigned char *)buffer;
+            for (int i = y1; i < y2; i++) {
+              for (int j = x1; j < x2; j++) {
+                ubuffer[(i * WIDTH + j) * 3 + 0] = 0;
+                ubuffer[(i * WIDTH + j) * 3 + 1] = 0;
+                ubuffer[(i * WIDTH + j) * 3 + 2] = 0;
+              }
+            }
+          } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::MONOCHROME2) {
+            // we can have 8bit or 16bit grayscales here
+            if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
+              unsigned char *ubuffer = (unsigned char *)buffer;
+              for (int i = y1; i < y2; i++) {
+                for (int j = x1; j < x2; j++) {
+                  ubuffer[i * WIDTH + j] = 0;
+                }
+              }
+            } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::INT16) { // have not seen an example yet
+              short *buffer16 = (short *)buffer;
+              fprintf(stdout, "We found MONOCHROME2 data with 16bit!\n");
+              for (int i = y1; i < y2; i++) {
+                for (int j = x1; j < x2; j++) {
+                  buffer16[i * WIDTH + j] = 0;
+                }
+              }
+            } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT16) { // have not seen an example yet
+              unsigned short *buffer16 = (unsigned short *)buffer;
+              fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short)!\n");
+              for (int i = y1; i < y2; i++) {
+                for (int j = x1; j < x2; j++) {
+                  buffer16[i * WIDTH + j] = 0;
+                }
+              }
+            }
+          }
+        }
         delete[] word;
+        // now mask the pixel values
       } while (ri->Next(level));
     }
+    // im.SetBuffer(buffer);
+    // fileToAnon.SetPixmap();
+    // we need to set the pixel data again that we write, in fileToAnon  (good example
+    // https://github.com/malaterre/GDCM/blob/master/Applications/Cxx/gdcmimg.cxx)
+    gdcm::DataElement pixeldata(gdcm::Tag(0x7fe0, 0x0010));
+    gdcm::ByteValue *bv = new gdcm::ByteValue();
+    bv->SetLength((uint32_t)length);
+    memcpy((void *)bv->GetPointer(), (void *)buffer, length);
+    pixeldata.SetValue(*bv);
+    // fileToAnon
+    im.SetDataElement(pixeldata);
+    // reader.SetImage(im);
 
     // ok save the file again
     std::string imageInstanceUID = filenamestring;
@@ -213,7 +356,7 @@ void *ReadFilesThread(void *voidparams) {
       fprintf(stderr, "Created a random image instance uid: %s\n", imageInstanceUID.c_str());
     }
     std::string fn = params->outputdir + "/" + filenamestring + ".dcm";
-    if (params->byseries) {
+    if (1) { // always store results by series directory
       // use the series instance uid as a directory name
       std::string dn = params->outputdir + "/" + seriesdirname;
       struct stat buffer;
@@ -231,8 +374,9 @@ void *ReadFilesThread(void *voidparams) {
     std::string outfilename(fn);
 
     // save the file again to the output
-    gdcm::Writer writer;
+    gdcm::ImageWriter writer;
     writer.SetFile(fileToAnon);
+    writer.SetImage(im);
     writer.SetFileName(outfilename.c_str());
     try {
       if (!writer.Write()) {
@@ -363,7 +507,7 @@ std::vector<std::string> listFiles(const std::string &path, std::vector<std::str
 
       if (f->d_type == DT_REG) {
         // cb(path + f->d_name);
-        files.push_back(path + f->d_name);
+        files.push_back(path + "/" + f->d_name);
       }
     }
     closedir(dir);
@@ -434,7 +578,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Check if user passed in a single directory
+  // Check if user passed in a single directory - parse all files in all sub-directories
   if (gdcm::System::FileIsDirectory(input.c_str())) {
     std::vector<std::string> files;
     files = listFiles(input.c_str(), files);
@@ -444,9 +588,13 @@ int main(int argc, char *argv[]) {
     for (unsigned int i = 0; i < nfiles; ++i) {
       filenames[i] = files[i].c_str();
     }
-
     ReadFiles(nfiles, filenames, output.c_str(), numthreads);
     delete[] filenames;
+  } else {
+    // its a single file, process that
+    const char **filenames = new const char *[1];
+    filenames[0] = input.c_str();
+    ReadFiles(1, filenames, output.c_str(), 1);
   }
 
   return 0;

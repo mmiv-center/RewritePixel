@@ -1,7 +1,8 @@
 FROM ubuntu:18.04
 
 RUN apt-get update -qq && apt-get install -yq build-essential \
-    cmake git wget libxml2-dev libxslt1-dev libjpeg-dev expat
+    cmake git wget libxml2-dev libxslt1-dev libjpeg-dev expat \
+    libpng12-dev libtiff4-dev
 
 # build gdcm and the executable
 RUN cd /root && git clone https://github.com/mmiv-center/RewritePixel.git && cd RewritePixel && \
