@@ -16,9 +16,10 @@ message(STATUS ZLIB_LIBRARY = ${ZLIB_LIBRARY})
 message(STATUS XLST_LIBRARY = ${XLST_LIBRARY})
 
 add_executable (rewritepixel rewritepixel.cxx ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories (rewritepixel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/DataStructureAndEncodingDefinition ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/MediaStorageAndFileFormat/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/InformationObjectDefinition/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/DataDictionary/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/bin/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/DataStructureAndEncodingDefinition ${LIBXML2_INCLUDE_DIR})
+target_include_directories (rewritepixel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/DataStructureAndEncodingDefinition ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/MediaStorageAndFileFormat/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/InformationObjectDefinition/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/DataDictionary/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/bin/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/DataStructureAndEncodingDefinition /usr/local/Cellar/leptonica/1.78.0_1/include /usr/local/Cellar/tesseract/4.1.1/include/ ${LIBXML2_INCLUDE_DIR})
 
 SET(GDCM_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/bin/)
+SET(LEPTONICA_LIB_PATH /usr/local/Cellar/leptonica/1.78.0_1/lib)
 link_directories(rewritepixel ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/bin/)
 FIND_LIBRARY(COMMON_LIBRARY       NAMES gdcmCommon       PATHS ${GDCM_LIB_PATH} NO_DEFAULT_PATH)
 FIND_LIBRARY(IOD_LIBRARY       NAMES gdcmIOD       PATHS ${GDCM_LIB_PATH} NO_DEFAULT_PATH)

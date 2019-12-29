@@ -5,14 +5,15 @@
   Copyright (c) 2020 Hauke Bartsch
 
   For debugging use:
-    cmake -DCMAKE_BUILD_TYPE=Release ..
+    cmake -DCMAKE_BUILD_TYPE=Debug .
   to build gdcm.
 
   https://github.com/tesseract-ocr/tesseract/wiki/APIExample
+  To get support for norwegian try to install tesseract-lang
+  > brew install tesseract-lang
+  export TESSDATA_PREFIX=/usr/local/Cellar/tesseract/4.1.1/share/tessdata
 
   =========================================================================*/
-#include "SHA-256.hpp"
-#include "dateprocessing.h"
 #include "gdcmAnonymizer.h"
 #include "gdcmAttribute.h"
 #include "gdcmDefs.h"
@@ -34,6 +35,7 @@
 #include <errno.h>
 #include <exception>
 #include <stdexcept>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -67,17 +69,15 @@ void *ReadFilesThread(void *voidparams) {
     const char *filename = params->filenames[file];
     // std::cerr << filename << std::endl;
 
-    // gdcm::ImageReader reader;
-    gdcm::Reader reader;
+    gdcm::ImageReader reader;
+    // gdcm::Reader reader;
     reader.SetFileName(filename);
     try {
       if (!reader.Read()) {
-        std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread
-                  << std::endl;
+        std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread << std::endl;
       }
     } catch (...) {
-      std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread
-                << std::endl;
+      std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread << std::endl;
       continue;
     }
 
@@ -142,22 +142,42 @@ void *ReadFilesThread(void *voidparams) {
     // maxval = 0xff;
     // if (DEPTH == 16)
     //  maxval = 0xffff;
-    int HEIGHT = sf.ToInt(gdcm::Tag(0x0028, 0x0010)); // acquisition matrix
-    int WIDTH = sf.ToInt(gdcm::Tag(0x0028, 0x0011));  // acquisition matrix
-    gdcm::Image im = new gdcm::Image();
-    im = reader.GetImage(); // is this color or grayscale????
-    ushort[] theData = new ushort[WIDTH * HEIGHT];
-    im.GetArray(theData);
+    int HEIGHT = atoi(sf.ToString(gdcm::Tag(0x0028, 0x0010)).c_str()); // acquisition matrix
+    int WIDTH = atoi(sf.ToString(gdcm::Tag(0x0028, 0x0011)).c_str());  // acquisition matrix
+    // gdcm::Image *im = new gdcm::Image();
+    gdcm::Pixmap &im = reader.GetPixmap(); // is this color or grayscale????
+    size_t length = im.GetBufferLength();
+    fprintf(stdout, "%ld length data (could be multi-frame) size of a single image is: %d %d\n", length, HEIGHT, WIDTH);
+    char *buffer = new char[length];
+    im.GetBuffer(buffer);
+    // detect the type
+    typedef enum { NO_TYPE = 0, GRAYSCALE = 1, RGB = 2 } ITYPE;
+    ITYPE image_type = NO_TYPE;
+    if (HEIGHT * WIDTH == length) {
+      image_type = GRAYSCALE;
+    }
+    if (image_type != GRAYSCALE) {
+      fprintf(stderr, "Error: cannot process unknown image type - non-grayscale image found...\n");
+      continue;
+    }
 
     PIX *pixs = pixCreate(WIDTH, HEIGHT, 32); // rgba colors
-    for (i = 0; i < HEIGHT; i++) {
-      for (j = 0; j < WIDTH; j++) {
-        l_int32 val;
+    for (int i = 0; i < HEIGHT; i++) {
+      for (int j = 0; j < WIDTH; j++) {
+        l_uint32 val;
         l_int32 red = 0;
         l_int32 green = 0;
         l_int32 blue = 0;
         // if im is grayscale or color
-
+        if (image_type == GRAYSCALE) {
+          red = buffer[i * WIDTH + j];
+          green = buffer[i * WIDTH + j];
+          blue = buffer[i * WIDTH + j];
+        } else {
+          red = buffer[(i * WIDTH + j) * 3 + 0];
+          green = buffer[(i * WIDTH + j) * 3 + 1];
+          blue = buffer[(i * WIDTH + j) * 3 + 2];
+        }
         composeRGBPixel(red, green, blue, &val);
         //    val = maxval * j / WIDTH;
 
@@ -167,7 +187,7 @@ void *ReadFilesThread(void *voidparams) {
 
     //  Pix *image = pixRead("/usr/src/tesseract/testing/phototest.tif");
     tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
-    api->Init(NULL, "eng+nor");
+    api->Init(NULL, "eng+nor"); // this requires a nor.traineddata to be in the /usr/local/Cellar/tesseract/4.1.1/share/tessdata directory
     api->SetImage(pixs);
     api->Recognize(0);
     tesseract::ResultIterator *ri = api->GetIterator();
@@ -178,8 +198,7 @@ void *ReadFilesThread(void *voidparams) {
         float conf = ri->Confidence(level);
         int x1, y1, x2, y2;
         ri->BoundingBox(level, &x1, &y1, &x2, &y2);
-        printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2,
-               y2);
+        printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
         delete[] word;
       } while (ri->Next(level));
     }
@@ -190,6 +209,8 @@ void *ReadFilesThread(void *voidparams) {
       fprintf(stderr, "Error: cannot read image instance uid from %s\n", filename);
       gdcm::UIDGenerator gen;
       imageInstanceUID = gen.Generate();
+      filenamestring = imageInstanceUID;
+      fprintf(stderr, "Created a random image instance uid: %s\n", imageInstanceUID.c_str());
     }
     std::string fn = params->outputdir + "/" + filenamestring + ".dcm";
     if (params->byseries) {
@@ -215,8 +236,7 @@ void *ReadFilesThread(void *voidparams) {
     writer.SetFileName(outfilename.c_str());
     try {
       if (!writer.Write()) {
-        fprintf(stderr, "Error [#file: %d, thread: %d] writing file \"%s\" to \"%s\".\n", file,
-                params->thread, filename, outfilename.c_str());
+        fprintf(stderr, "Error [#file: %d, thread: %d] writing file \"%s\" to \"%s\".\n", file, params->thread, filename, outfilename.c_str());
       }
     } catch (const std::exception &ex) {
       std::cout << "Caught exception \"" << ex.what() << "\"\n";
@@ -234,8 +254,7 @@ void ShowFilenames(const threadparams &params) {
   std::cout << "end" << std::endl;
 }
 
-void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads,
-               std::string storeMappingAsJSON) {
+void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads) {
   // \precondition: nfiles > 0
   assert(nfiles > 0);
 
@@ -245,30 +264,23 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x0010))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x0010));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x0010), gdcm::DictEntry("Private Creator Group CTP-LIKE", "0x0013, 0x0010",
-                                                 gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x0010),
+                                              gdcm::DictEntry("Private Creator Group CTP-LIKE", "0x0013, 0x0010", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x1010))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x1010));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x1010),
-      gdcm::DictEntry("ProjectName", "0x0013, 0x1010", gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x1010), gdcm::DictEntry("ProjectName", "0x0013, 0x1010", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x1013))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x1013));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x1013),
-      gdcm::DictEntry("SiteID", "0x0013, 0x1013", gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x1013), gdcm::DictEntry("SiteID", "0x0013, 0x1013", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x1012))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x1012));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x1012),
-      gdcm::DictEntry("SiteName", "0x0013, 0x1012", gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x1012), gdcm::DictEntry("SiteName", "0x0013, 0x1012", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (nfiles <= numthreads) {
     numthreads = 1; // fallback if we don't have enough files to process
@@ -280,7 +292,7 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
   pthread_t *pthread = new pthread_t[nthreads];
 
   // There is nfiles, and nThreads
-  assert(nfiles > nthreads);
+  assert(nfiles >= nthreads);
   const size_t partition = nfiles / nthreads;
   for (unsigned int thread = 0; thread < nthreads; ++thread) {
     params[thread].filenames = filenames + thread * partition;
@@ -310,58 +322,54 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
     pthread_join(pthread[thread], NULL);
   }
 
-  // we can access the per thread storage of study instance uid mappings now
-  if (storeMappingAsJSON.length() > 0) {
-    std::map<std::string, std::string> uidmappings;
-    for (unsigned int thread = 0; thread < nthreads; thread++) {
-      for (std::map<std::string, std::string>::iterator it =
-               params[thread].byThreadStudyInstanceUID.begin();
-           it != params[thread].byThreadStudyInstanceUID.end(); ++it) {
-        uidmappings.insert(std::pair<std::string, std::string>(it->first, it->second));
-      }
-    }
-    nlohmann::json ar;
-    for (std::map<std::string, std::string>::iterator it = uidmappings.begin();
-         it != uidmappings.end(); ++it) {
-      ar[it->first] = it->second;
-    }
-
-    // if the file exists already, don't store again (maybe its from another thread?)
-    std::ofstream jsonfile(storeMappingAsJSON);
-    jsonfile << ar;
-    jsonfile.flush();
-    jsonfile.close();
-  }
-
   delete[] pthread;
 }
 
 struct Arg : public option::Arg {
-  static option::ArgStatus Required(const option::Option &option, bool) {
-    return option.arg == 0 ? option::ARG_ILLEGAL : option::ARG_OK;
-  }
-  static option::ArgStatus Empty(const option::Option &option, bool) {
-    return (option.arg == 0 || option.arg[0] == 0) ? option::ARG_OK : option::ARG_IGNORE;
-  }
+  static option::ArgStatus Required(const option::Option &option, bool) { return option.arg == 0 ? option::ARG_ILLEGAL : option::ARG_OK; }
+  static option::ArgStatus Empty(const option::Option &option, bool) { return (option.arg == 0 || option.arg[0] == 0) ? option::ARG_OK : option::ARG_IGNORE; }
 };
 
 enum optionIndex { UNKNOWN, HELP, INPUT, OUTPUT, NUMTHREADS };
-const option::Descriptor usage[] = {
-    {UNKNOWN, 0, "", "", option::Arg::None,
-     "USAGE: rewritepixel [options]\n\n"
-     "Options:"},
-    {HELP, 0, "", "help", Arg::None,
-     "  --help  \tRewrite DICOM images to remove text. Read DICOM image series and write "
-     "out an anonymized version of the image data."},
-    {INPUT, 0, "i", "input", Arg::Required, "  --input, -i  \tInput directory."},
-    {OUTPUT, 0, "o", "output", Arg::Required, "  --output, -o  \tOutput directory."},
-    {NUMTHREADS, 0, "t", "numthreads", Arg::Required,
-     "  --numthreads, -t  \tHow many threads should be used (default 4)."},
-    {UNKNOWN, 0, "", "", Arg::None,
-     "\nExamples:\n"
-     "  rewritepixel --input directory --output directory\n"
-     "  rewritepixel --help\n"},
-    {0, 0, 0, 0, 0, 0}};
+const option::Descriptor usage[] = {{UNKNOWN, 0, "", "", option::Arg::None,
+                                     "USAGE: rewritepixel [options]\n\n"
+                                     "Options:"},
+                                    {HELP, 0, "", "help", Arg::None,
+                                     "  --help  \tRewrite DICOM images to remove text. Read DICOM image series and write "
+                                     "out an anonymized version of the image data."},
+                                    {INPUT, 0, "i", "input", Arg::Required, "  --input, -i  \tInput directory."},
+                                    {OUTPUT, 0, "o", "output", Arg::Required, "  --output, -o  \tOutput directory."},
+                                    {NUMTHREADS, 0, "t", "numthreads", Arg::Required, "  --numthreads, -t  \tHow many threads should be used (default 4)."},
+                                    {UNKNOWN, 0, "", "", Arg::None,
+                                     "\nExamples:\n"
+                                     "  rewritepixel --input directory --output directory\n"
+                                     "  rewritepixel --help\n"},
+                                    {0, 0, 0, 0, 0, 0}};
+
+// get all files in all sub-directories, does some recursive calls so it might take a while
+// TODO: would be good to start anonymizing already while its still trying to find more files...
+std::vector<std::string> listFiles(const std::string &path, std::vector<std::string> files) {
+  if (auto dir = opendir(path.c_str())) {
+    while (auto f = readdir(dir)) {
+      // check for '.' and '..', but allow other names that start with a dot
+      if (((strlen(f->d_name) == 1) && (f->d_name[0] == '.')) || ((strlen(f->d_name) == 2) && (f->d_name[0] == '.') && (f->d_name[1] == '.')))
+        continue;
+      if (f->d_type == DT_DIR) {
+        std::vector<std::string> ff = listFiles(path + "/" + f->d_name + "/", files);
+        // append the returned files to files
+        for (int i = 0; i < ff.size(); i++)
+          files.push_back(ff[i]);
+      }
+
+      if (f->d_type == DT_REG) {
+        // cb(path + f->d_name);
+        files.push_back(path + f->d_name);
+      }
+    }
+    closedir(dir);
+  }
+  return files;
+}
 
 int main(int argc, char *argv[]) {
 
@@ -390,58 +398,54 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < parse.optionsCount(); ++i) {
     option::Option &opt = buffer[i];
     switch (opt.index()) {
-    case HELP:
-      // not possible, because handled further above and exits the program
-    case INPUT:
-      if (opt.arg) {
-        fprintf(stdout, "--input '%s'\n", opt.arg);
-        input = opt.arg;
-      } else {
-        fprintf(stdout, "--input needs a directory specified\n");
-        exit(-1);
-      }
-      break;
-    case OUTPUT:
-      if (opt.arg) {
-        fprintf(stdout, "--output '%s'\n", opt.arg);
-        output = opt.arg;
-      } else {
-        fprintf(stdout, "--output needs a directory specified\n");
-        exit(-1);
-      }
-      break;
-    case NUMTHREADS:
-      if (opt.arg) {
-        fprintf(stdout, "--numthreads %d\n", atoi(opt.arg));
-        numthreads = atoi(opt.arg);
-      } else {
-        fprintf(stdout, "--numthreads needs an integer specified\n");
-        exit(-1);
-      }
-      break;
-    case UNKNOWN:
-      // not possible because Arg::Unknown returns ARG_ILLEGAL
-      // which aborts the parse with an error
-      break;
+      case HELP:
+        // not possible, because handled further above and exits the program
+      case INPUT:
+        if (opt.arg) {
+          fprintf(stdout, "--input '%s'\n", opt.arg);
+          input = opt.arg;
+        } else {
+          fprintf(stdout, "--input needs a directory specified\n");
+          exit(-1);
+        }
+        break;
+      case OUTPUT:
+        if (opt.arg) {
+          fprintf(stdout, "--output '%s'\n", opt.arg);
+          output = opt.arg;
+        } else {
+          fprintf(stdout, "--output needs a directory specified\n");
+          exit(-1);
+        }
+        break;
+      case NUMTHREADS:
+        if (opt.arg) {
+          fprintf(stdout, "--numthreads %d\n", atoi(opt.arg));
+          numthreads = atoi(opt.arg);
+        } else {
+          fprintf(stdout, "--numthreads needs an integer specified\n");
+          exit(-1);
+        }
+        break;
+      case UNKNOWN:
+        // not possible because Arg::Unknown returns ARG_ILLEGAL
+        // which aborts the parse with an error
+        break;
     }
   }
 
-  // Check if user pass in a single directory
+  // Check if user passed in a single directory
   if (gdcm::System::FileIsDirectory(input.c_str())) {
-    gdcm::Directory d;
-    d.Load(argv[1]);
-    gdcm::Directory::FilenamesType l = d.GetFilenames();
-    const size_t nfiles = l.size();
+    std::vector<std::string> files;
+    files = listFiles(input.c_str(), files);
+
+    const size_t nfiles = files.size();
     const char **filenames = new const char *[nfiles];
     for (unsigned int i = 0; i < nfiles; ++i) {
-      filenames[i] = l[i].c_str();
-    }
-    if (storeMappingAsJSON.length() > 0) {
-      storeMappingAsJSON = output + std::string("/") + storeMappingAsJSON;
+      filenames[i] = files[i].c_str();
     }
 
-    // do all the left-over once
-    ReadFiles(nfiles, filenames, output.c_str(), numthreads, storeMappingAsJSON);
+    ReadFiles(nfiles, filenames, output.c_str(), numthreads);
     delete[] filenames;
   }
 
