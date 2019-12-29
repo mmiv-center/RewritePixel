@@ -269,7 +269,7 @@ void *ReadFilesThread(void *voidparams) {
     tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
     api->Init(NULL, "eng+nor"); // this requires a nor.traineddata to be in the /usr/local/Cellar/tesseract/4.1.1/share/tessdata directory
     api->SetImage(pixs);
-    api->SetSourceResolution(70);
+    api->SetSourceResolution(70); // tried several, does not seem to make a different (prevents warning)
 
     api->Recognize(0);
     tesseract::ResultIterator *ri = api->GetIterator();
@@ -277,7 +277,7 @@ void *ReadFilesThread(void *voidparams) {
     if (ri != 0) {
       do {
         const char *word = ri->GetUTF8Text(level);
-        float conf = ri->Confidence(level);
+        float conf = ri->Confidence(level); // we don't care
         int x1, y1, x2, y2;
         ri->BoundingBox(level, &x1, &y1, &x2, &y2);
 
@@ -301,33 +301,36 @@ void *ReadFilesThread(void *voidparams) {
                 ubuffer[(i * WIDTH + j) * 3 + 2] = 0;
               }
             }
-          } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::MONOCHROME2) {
-            // we can have 8bit or 16bit grayscales here
-            if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
-              unsigned char *ubuffer = (unsigned char *)buffer;
-              for (int i = y1; i < y2; i++) {
-                for (int j = x1; j < x2; j++) {
-                  ubuffer[i * WIDTH + j] = 0;
-                }
+          }
+        } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::MONOCHROME2) {
+          // we can have 8bit or 16bit grayscales here
+          if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
+            unsigned char *ubuffer = (unsigned char *)buffer;
+            fprintf(stdout, "We found MONOCHROME2 data with uint8 8bit!\n");
+            for (int i = y1; i < y2; i++) {
+              for (int j = x1; j < x2; j++) {
+                ubuffer[i * WIDTH + j] = 0;
               }
-            } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::INT16) { // have not seen an example yet
-              short *buffer16 = (short *)buffer;
-              fprintf(stdout, "We found MONOCHROME2 data with 16bit!\n");
-              for (int i = y1; i < y2; i++) {
-                for (int j = x1; j < x2; j++) {
-                  buffer16[i * WIDTH + j] = 0;
-                }
+            }
+          } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::INT16) { // have not seen an example yet
+            short *buffer16 = (short *)buffer;
+            fprintf(stdout, "We found MONOCHROME2 data with 16bit int16!\n");
+            for (int i = y1; i < y2; i++) {
+              for (int j = x1; j < x2; j++) {
+                buffer16[i * WIDTH + j] = 0;
               }
-            } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT16) { // have not seen an example yet
-              unsigned short *buffer16 = (unsigned short *)buffer;
-              fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short)!\n");
-              for (int i = y1; i < y2; i++) {
-                for (int j = x1; j < x2; j++) {
-                  buffer16[i * WIDTH + j] = 0;
-                }
+            }
+          } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT16) { // have not seen an example yet
+            unsigned short *buffer16 = (unsigned short *)buffer;
+            fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short)!\n");
+            for (int i = y1; i < y2; i++) {
+              for (int j = x1; j < x2; j++) {
+                buffer16[i * WIDTH + j] = 0;
               }
             }
           }
+        } else {
+          fprintf(stdout, "Error: unknown data\n");
         }
         delete[] word;
         // now mask the pixel values
