@@ -306,7 +306,7 @@ void *ReadFilesThread(void *voidparams) {
           // we can have 8bit or 16bit grayscales here
           if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
             unsigned char *ubuffer = (unsigned char *)buffer;
-            fprintf(stdout, "We found MONOCHROME2 data with uint8 8bit!\n");
+            // fprintf(stdout, "We found MONOCHROME2 data with uint8 8bit!\n");
             for (int i = y1; i < y2; i++) {
               for (int j = x1; j < x2; j++) {
                 ubuffer[i * WIDTH + j] = 0;
@@ -314,7 +314,7 @@ void *ReadFilesThread(void *voidparams) {
             }
           } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::INT16) { // have not seen an example yet
             short *buffer16 = (short *)buffer;
-            fprintf(stdout, "We found MONOCHROME2 data with 16bit int16!\n");
+            // fprintf(stdout, "We found MONOCHROME2 data with 16bit int16!\n");
             for (int i = y1; i < y2; i++) {
               for (int j = x1; j < x2; j++) {
                 buffer16[i * WIDTH + j] = 0;
@@ -322,7 +322,7 @@ void *ReadFilesThread(void *voidparams) {
             }
           } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT16) { // have not seen an example yet
             unsigned short *buffer16 = (unsigned short *)buffer;
-            fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short)!\n");
+            // fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short)!\n");
             for (int i = y1; i < y2; i++) {
               for (int j = x1; j < x2; j++) {
                 buffer16[i * WIDTH + j] = 0;
