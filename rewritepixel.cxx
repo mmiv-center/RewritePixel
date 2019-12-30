@@ -241,11 +241,11 @@ void *ReadFilesThread(void *voidparams) {
             // if im is grayscale or color
             // fprintf(stdout, "%d %d ", ((unsigned char *)(&buffer16[i * WIDTH + j]))[0], ((unsigned char *)(&buffer16[i * WIDTH + j]))[1]);
             int v = floor((((double)buffer16[i * WIDTH + j] - gimage.GetPixelFormat().GetMin()) / (float)gimage.GetPixelFormat().GetMax()) * 255);
-            red = (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
-            if (v != 0)
-              fprintf(stdout, "%d (%lld %lld)\n", v, gimage.GetPixelFormat().GetMin(), gimage.GetPixelFormat().GetMax());
-            green = (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
-            blue = (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
+            red = v; // (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
+            //if (v != 0)
+            //  fprintf(stdout, "%d (%lld %lld)\n", v, gimage.GetPixelFormat().GetMin(), gimage.GetPixelFormat().GetMax());
+            green = v; // (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
+            blue = v; // (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
             composeRGBPixel(red, green, blue, &val);
             pixSetPixel(pixs, j, i, val);
           }
