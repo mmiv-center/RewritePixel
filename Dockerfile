@@ -13,6 +13,6 @@ RUN cd /root && git clone https://github.com/mmiv-center/RewritePixel.git && cd 
     tar xzvf v3.0.4.tar.gz && mkdir gdcm-build && cd gdcm-build && cmake -DGDCM_BUILD_SHARED_LIBS=ON ../GDCM-3.0.4 && \
     make
 
-#RUN cd /root/RewritePixel && cmake . && make
+RUN cd /root/RewritePixel && cmake . && make
 
-#ENTRYPOINT [ "/root/RewritePixel/rewritepixel" ]
+ENTRYPOINT [ "/root/RewritePixel/rewritepixel" ]
