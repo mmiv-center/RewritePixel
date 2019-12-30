@@ -4,6 +4,9 @@ RUN apt-get update -qq && apt-get install -yq build-essential \
     cmake git wget libxml2-dev libxslt1-dev libjpeg-dev expat \
     libpng12-dev libtiff4-dev
 
+# we want to use the norwegian language ontop of the english default
+RUN apt-get install libtesseract-dev tesseract-ocr-nor libleptonica-dev
+
 # build gdcm and the executable
 RUN cd /root && git clone https://github.com/mmiv-center/RewritePixel.git && cd RewritePixel && \
     wget https://github.com/malaterre/GDCM/archive/v3.0.4.tar.gz && \
