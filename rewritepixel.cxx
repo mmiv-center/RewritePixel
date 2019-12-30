@@ -51,13 +51,8 @@ struct threadparams {
   size_t nfiles;
   char *scalarpointer;
   std::string outputdir;
-  std::string patientid;
-  std::string projectname;
-  std::string sitename;
-  std::string siteid;
-  int dateincrement;
-  bool byseries;
   int thread; // number of the thread
+  float confidence;
   // each thread will store here the study instance uid (original and mapped)
   std::map<std::string, std::string> byThreadStudyInstanceUID;
 };
@@ -311,7 +306,7 @@ void *ReadFilesThread(void *voidparams) {
     // type, this would allow us to have the conversion below only done once.. but we would always
     // write the same image type back - not very nice...
     // http://gdcm.sourceforge.net/html/ConvertToQImage_8cxx-example.html
-    std::vector<std::string> safeList = {"Patient", "Name", "Study", "Protocol", "Date"};
+    std::vector<std::string> safeList = {"Patient", "Name", "Study", "Protocol", "Date", "A", "P", "I", "L", "R", "H"};
 
     tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
     api->Init(NULL, "eng+nor"); // this requires a nor.traineddata to be in the /usr/local/Cellar/tesseract/4.1.1/share/tessdata directory
@@ -334,6 +329,15 @@ void *ReadFilesThread(void *voidparams) {
           continue; // found a safeList entry, don't do anything
         }
         // check if the word is a number? But we don't want to see dates either...
+        // check for confidence
+        if (conf < params->confidence) {
+          printf("skip-word - low confidence: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
+          continue;
+        }
+        // if (strlen(word) == 1) {
+        //  printf("skip-word - single character: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
+        //  continue;
+        //}
 
         printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
         // mask out the bounding box with black
@@ -470,7 +474,7 @@ void ShowFilenames(const threadparams &params) {
   std::cout << "end" << std::endl;
 }
 
-void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads) {
+void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads, float confidence) {
   // \precondition: nfiles > 0
   assert(nfiles > 0);
 
@@ -515,6 +519,7 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
     params[thread].outputdir = outputdir;
     params[thread].nfiles = partition;
     params[thread].thread = thread;
+    params[thread].confidence = confidence;
     if (thread == nthreads - 1) {
       // There is slightly more files to process in this thread:
       params[thread].nfiles += nfiles % nthreads;
@@ -546,7 +551,7 @@ struct Arg : public option::Arg {
   static option::ArgStatus Empty(const option::Option &option, bool) { return (option.arg == 0 || option.arg[0] == 0) ? option::ARG_OK : option::ARG_IGNORE; }
 };
 
-enum optionIndex { UNKNOWN, HELP, INPUT, OUTPUT, NUMTHREADS };
+enum optionIndex { UNKNOWN, HELP, INPUT, OUTPUT, NUMTHREADS, CONFIDENCE };
 const option::Descriptor usage[] = {{UNKNOWN, 0, "", "", option::Arg::None,
                                      "USAGE: rewritepixel [options]\n\n"
                                      "Options:"},
@@ -555,6 +560,7 @@ const option::Descriptor usage[] = {{UNKNOWN, 0, "", "", option::Arg::None,
                                      "out an anonymized version of the image data."},
                                     {INPUT, 0, "i", "input", Arg::Required, "  --input, -i  \tInput directory."},
                                     {OUTPUT, 0, "o", "output", Arg::Required, "  --output, -o  \tOutput directory."},
+                                    {CONFIDENCE, 0, "c", "confidence", Arg::Required, "  --confidence, -c  \tConfidence threshold (0..100)."},
                                     {NUMTHREADS, 0, "t", "numthreads", Arg::Required, "  --numthreads, -t  \tHow many threads should be used (default 4)."},
                                     {UNKNOWN, 0, "", "", Arg::None,
                                      "\nExamples:\n"
@@ -611,6 +617,7 @@ int main(int argc, char *argv[]) {
   std::string input;
   std::string output;
   int numthreads = 4;
+  float confidence = 0.0f; // no confidence is ok
   for (int i = 0; i < parse.optionsCount(); ++i) {
     option::Option &opt = buffer[i];
     switch (opt.index()) {
@@ -643,6 +650,15 @@ int main(int argc, char *argv[]) {
           exit(-1);
         }
         break;
+      case CONFIDENCE:
+        if (opt.arg) {
+          fprintf(stdout, "--confidence %f\n", atof(opt.arg));
+          confidence = atoi(opt.arg);
+        } else {
+          fprintf(stdout, "--confidence needs an integer specified (0..100)\n");
+          exit(-1);
+        }
+        break;
       case UNKNOWN:
         // not possible because Arg::Unknown returns ARG_ILLEGAL
         // which aborts the parse with an error
@@ -660,13 +676,13 @@ int main(int argc, char *argv[]) {
     for (unsigned int i = 0; i < nfiles; ++i) {
       filenames[i] = files[i].c_str();
     }
-    ReadFiles(nfiles, filenames, output.c_str(), numthreads);
+    ReadFiles(nfiles, filenames, output.c_str(), numthreads, confidence);
     delete[] filenames;
   } else {
     // its a single file, process that
     const char **filenames = new const char *[1];
     filenames[0] = input.c_str();
-    ReadFiles(1, filenames, output.c_str(), 1);
+    ReadFiles(1, filenames, output.c_str(), 1, confidence);
   }
 
   return 0;
