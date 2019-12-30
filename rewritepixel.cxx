@@ -258,13 +258,60 @@ void *ReadFilesThread(void *voidparams) {
       } else {
         fprintf(stderr, "unknown pixel format in input... nothing is done\n");
       }
+    } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::YBR_FULL_422) {
+      if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
+        fprintf(stdout, "Found PhotometricInterpretation YBR_FULL_422 (UINT8)\n");
+        unsigned char *ubuffer = (unsigned char *)buffer;
+        for (int i = 0; i < HEIGHT; i++) {
+          for (int j = 0; j < WIDTH; j++) {
+            l_uint32 val;
+            l_int32 red = 0;
+            l_int32 green = 0;
+            l_int32 blue = 0;
+            // if im is grayscale or color
+            unsigned char a = ubuffer[(i * WIDTH + j) * 3 + 0];
+            unsigned char b = ubuffer[(i * WIDTH + j) * 3 + 1];
+            unsigned char c = ubuffer[(i * WIDTH + j) * 3 + 2];
+
+            int R = 38142 * (a - 16) + 52298 * (c - 128);
+            int G = 38142 * (a - 16) - 26640 * (c - 128) - 12845 * (b - 128);
+            int B = 38142 * (a - 16) + 66093 * (b - 128);
+
+            R = (R + 16384) >> 15;
+            G = (G + 16384) >> 15;
+            B = (B + 16384) >> 15;
+
+            if (R < 0)
+              R = 0;
+            if (G < 0)
+              G = 0;
+            if (B < 0)
+              B = 0;
+            if (R > 255)
+              R = 255;
+            if (G > 255)
+              G = 255;
+            if (B > 255)
+              B = 255;
+            red = R;
+            green = G;
+            blue = B;
+
+            composeRGBPixel(red, green, blue, &val);
+            pixSetPixel(pixs, j, i, val);
+          }
+        }
+      }
+    } else {
+      fprintf(stderr, "Error: cannot process this PhotometricInterpretation.\n");
+      continue;
     }
 
     // it might be good to convert all input images to a common format - regardless of the original
     // type, this would allow us to have the conversion below only done once.. but we would always
     // write the same image type back - not very nice...
     // http://gdcm.sourceforge.net/html/ConvertToQImage_8cxx-example.html
-    std::vector<std::string> safeList = {"Patient", "Name", "Study", "Protocol"};
+    std::vector<std::string> safeList = {"Patient", "Name", "Study", "Protocol", "Date"};
 
     tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
     api->Init(NULL, "eng+nor"); // this requires a nor.traineddata to be in the /usr/local/Cellar/tesseract/4.1.1/share/tessdata directory
@@ -329,6 +376,20 @@ void *ReadFilesThread(void *voidparams) {
               }
             }
           }
+        } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::YBR_FULL_422) {
+          if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) { // hopefully always true
+                                                                     // change values in the buffer
+            unsigned char *ubuffer = (unsigned char *)buffer;        // but buffer has the wrong encoding now
+            for (int i = y1; i < y2; i++) {
+              for (int j = x1; j < x2; j++) { // hope this is ok for YBR data as well
+                ubuffer[(i * WIDTH + j) * 3 + 0] = 0;
+                ubuffer[(i * WIDTH + j) * 3 + 1] = 0;
+                ubuffer[(i * WIDTH + j) * 3 + 2] = 0;
+              }
+            }
+          } else {
+            fprintf(stderr, "ERROR: could not interpret non-UINT8 YBR_FULL_422 data\n");
+          }
         } else {
           fprintf(stdout, "Error: unknown data\n");
         }
@@ -345,6 +406,14 @@ void *ReadFilesThread(void *voidparams) {
     bv->SetLength((uint32_t)length);
     memcpy((void *)bv->GetPointer(), (void *)buffer, length);
     pixeldata.SetValue(*bv);
+    if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::YBR_FULL_422) { // for YBR_FULL_422
+      // we get an error if the transfer syntax is JPEG baseline 1
+      gdcm::TransferSyntax ts = gdcm::TransferSyntax::ExplicitVRBigEndian;
+      // fileToAnon.GetHeader().SetDataSetTransferSyntax(ts);
+      im.SetTransferSyntax(ts);
+      // pixeldata.SetVLToUndefined();
+    }
+
     // fileToAnon
     im.SetDataElement(pixeldata);
     // reader.SetImage(im);
