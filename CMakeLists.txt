@@ -16,7 +16,17 @@ message(STATUS ZLIB_LIBRARY = ${ZLIB_LIBRARY})
 message(STATUS XLST_LIBRARY = ${XLST_LIBRARY})
 
 add_executable (rewritepixel rewritepixel.cxx ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories (rewritepixel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/DataStructureAndEncodingDefinition ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/MediaStorageAndFileFormat/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/InformationObjectDefinition/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/DataDictionary/ ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/bin/Source/Common ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-2.8.9/Source/DataStructureAndEncodingDefinition /usr/local/Cellar/leptonica/1.78.0_1/include /usr/local/Cellar/tesseract/4.1.1/include/ ${LIBXML2_INCLUDE_DIR})
+target_include_directories (rewritepixel PUBLIC
+			   ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/DataStructureAndEncodingDefinition
+			   ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/Source/Common
+			   ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-3.0.4/Source/Common
+			   ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-3.0.4/Source/MediaStorageAndFileFormat/
+			   ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-3.0.4/Source/InformationObjectDefinition/
+			   ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-3.0.4/Source/DataDictionary/
+			   ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-3.0.4/bin/Source/Common
+			   ${CMAKE_CURRENT_SOURCE_DIR}/GDCM-3.0.4/Source/DataStructureAndEncodingDefinition
+			   /usr/local/Cellar/leptonica/1.78.0_1/include
+			   /usr/local/Cellar/tesseract/4.1.1/include/ ${LIBXML2_INCLUDE_DIR})
 
 SET(GDCM_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/gdcm-build/bin/)
 SET(LEPTONICA_LIB_PATH /usr/local/Cellar/leptonica/1.78.0_1/lib)
@@ -121,5 +131,6 @@ libfind_process(Tesseract)
 #message(AUTHOR_WARNING ${COMMON_LIBRARY})
 #message(AUTHOR_WARNING ${IOD_LIBRARY})
 message(STATUS COMMON_LIBRARY = ${COMMON_LIBRARY})
+
 
 target_link_libraries(rewritepixel ${COMMON_LIBRARY} ${IOD_LIBRARY} ${MSFF_LIBRARY} ${DICT_LIBRARY} ${DSED_LIBRARY} ${LIBXML2_LIBRARY} ${JPEG_LIBRARY} ${ZLIB_LIBRARY} ${XLST_LIBRARY} ${Tesseract_LIBRARIES} pthread)
