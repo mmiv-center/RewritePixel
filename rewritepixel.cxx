@@ -54,6 +54,7 @@ struct threadparams {
   std::string outputdir;
   int thread; // number of the thread
   float confidence;
+  bool saveMappings;
   // each thread will store here the study instance uid (original and mapped)
   std::map<std::string, std::string> byThreadStudyInstanceUID;
 };
@@ -65,6 +66,7 @@ void *ReadFilesThread(void *voidparams) {
   for (unsigned int file = 0; file < nfiles; ++file) {
     const char *filename = params->filenames[file];
     // std::cerr << filename << std::endl;
+    fprintf(stdout, "Start with %s\n", filename);
 
     gdcm::ImageReader reader;
     // gdcm::Reader reader;
@@ -322,13 +324,26 @@ void *ReadFilesThread(void *voidparams) {
     api->Recognize(0);
     tesseract::ResultIterator *ri = api->GetIterator();
     tesseract::PageIteratorLevel level = tesseract::RIL_WORD;
+    int counter = 0;
     if (ri != 0) {
       do {
         const char *word = ri->GetUTF8Text(level);
         float conf = ri->Confidence(level); // we don't care
         int x1, y1, x2, y2;
         ri->BoundingBox(level, &x1, &y1, &x2, &y2);
-
+        if (params->saveMappings) {
+          // if we store the results we can write them into the thread storage
+          char numObjects[5];
+          snprintf(numObjects, 5, "%04d", counter++);
+          std::string key = filenamestring + "_" + numObjects;
+          nlohmann::json info = nlohmann::json::object();
+          info["word"] = std::string(word);
+          info["confidence"] = conf;
+          info["bounding_box"] = nlohmann::json::object({{"x1", x1}, {"y1", y1}, {"x2", x2}, {"y2", y2}});
+          info["SOPInstanceUID"] = filenamestring;
+          std::string value = info.dump();
+          params->byThreadStudyInstanceUID.insert(std::pair<std::string, std::string>(key, value)); // should only add this pair once
+        }
         // we can check against a safe list here
         if (std::find(safeList.begin(), safeList.end(), word) != safeList.end()) {
           printf("skip-word: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
@@ -489,7 +504,7 @@ void ShowFilenames(const threadparams &params) {
   std::cout << "end" << std::endl;
 }
 
-void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads, float confidence) {
+void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads, float confidence, std::string storeMappingAsJSON) {
   // \precondition: nfiles > 0
   assert(nfiles > 0);
 
@@ -535,6 +550,11 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
     params[thread].nfiles = partition;
     params[thread].thread = thread;
     params[thread].confidence = confidence;
+    params[thread].saveMappings = false;
+    if (storeMappingAsJSON.length() > 0) {
+      params[thread].saveMappings = true;
+    }
+
     if (thread == nthreads - 1) {
       // There is slightly more files to process in this thread:
       params[thread].nfiles += nfiles % nthreads;
@@ -558,6 +578,27 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
     pthread_join(pthread[thread], NULL);
   }
 
+  if (storeMappingAsJSON.length() > 0) {
+    std::map<std::string, std::string> uidmappings;
+    for (unsigned int thread = 0; thread < nthreads; thread++) {
+      for (std::map<std::string, std::string>::iterator it = params[thread].byThreadStudyInstanceUID.begin();
+           it != params[thread].byThreadStudyInstanceUID.end(); ++it) {
+        uidmappings.insert(std::pair<std::string, std::string>(it->first, it->second));
+      }
+    }
+    nlohmann::json ar;
+    for (std::map<std::string, std::string>::iterator it = uidmappings.begin(); it != uidmappings.end(); ++it) {
+      // each value is a json object, to be nice save those as plain json again
+      ar[it->first] = nlohmann::json::parse(it->second);
+    }
+
+    // if the file exists already, don't store again (maybe its from another thread?)
+    std::ofstream jsonfile(storeMappingAsJSON);
+    jsonfile << ar;
+    jsonfile.flush();
+    jsonfile.close();
+  }
+
   delete[] pthread;
 }
 
@@ -566,7 +607,7 @@ struct Arg : public option::Arg {
   static option::ArgStatus Empty(const option::Option &option, bool) { return (option.arg == 0 || option.arg[0] == 0) ? option::ARG_OK : option::ARG_IGNORE; }
 };
 
-enum optionIndex { UNKNOWN, HELP, INPUT, OUTPUT, NUMTHREADS, CONFIDENCE };
+enum optionIndex { UNKNOWN, HELP, INPUT, OUTPUT, NUMTHREADS, CONFIDENCE, STOREMAPPING };
 const option::Descriptor usage[] = {{UNKNOWN, 0, "", "", option::Arg::None,
                                      "USAGE: rewritepixel [options]\n\n"
                                      "Options:"},
@@ -577,6 +618,7 @@ const option::Descriptor usage[] = {{UNKNOWN, 0, "", "", option::Arg::None,
                                     {OUTPUT, 0, "o", "output", Arg::Required, "  --output, -o  \tOutput directory."},
                                     {CONFIDENCE, 0, "c", "confidence", Arg::Required, "  --confidence, -c  \tConfidence threshold (0..100)."},
                                     {NUMTHREADS, 0, "t", "numthreads", Arg::Required, "  --numthreads, -t  \tHow many threads should be used (default 4)."},
+                                    {STOREMAPPING, 0, "m", "storemapping", Arg::Required, "  --storemapping, -m  \tStore the detected strings as a JSON file."},
                                     {UNKNOWN, 0, "", "", Arg::None,
                                      "\nExamples:\n"
                                      "  rewritepixel --input directory --output directory\n"
@@ -633,6 +675,7 @@ int main(int argc, char *argv[]) {
   std::string output;
   int numthreads = 4;
   float confidence = 0.0f; // no confidence is ok
+  std::string storeMappingAsJSON = "";
   for (int i = 0; i < parse.optionsCount(); ++i) {
     option::Option &opt = buffer[i];
     switch (opt.index()) {
@@ -674,6 +717,15 @@ int main(int argc, char *argv[]) {
           exit(-1);
         }
         break;
+      case STOREMAPPING:
+        if (opt.arg) {
+          fprintf(stdout, "--storemapping %s\n", opt.arg);
+          storeMappingAsJSON = opt.arg;
+        } else {
+          fprintf(stdout, "--storemapping needs an path name\n");
+          exit(-1);
+        }
+        break;
       case UNKNOWN:
         // not possible because Arg::Unknown returns ARG_ILLEGAL
         // which aborts the parse with an error
@@ -691,13 +743,13 @@ int main(int argc, char *argv[]) {
     for (unsigned int i = 0; i < nfiles; ++i) {
       filenames[i] = files[i].c_str();
     }
-    ReadFiles(nfiles, filenames, output.c_str(), numthreads, confidence);
+    ReadFiles(nfiles, filenames, output.c_str(), numthreads, confidence, storeMappingAsJSON);
     delete[] filenames;
   } else {
     // its a single file, process that
     const char **filenames = new const char *[1];
     filenames[0] = input.c_str();
-    ReadFiles(1, filenames, output.c_str(), 1, confidence);
+    ReadFiles(1, filenames, output.c_str(), 1, confidence, storeMappingAsJSON);
   }
 
   return 0;
