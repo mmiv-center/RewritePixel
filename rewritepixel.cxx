@@ -328,6 +328,7 @@ void *ReadFilesThread(void *voidparams) {
     if (ri != 0) {
       do {
         const char *word = ri->GetUTF8Text(level);
+        const char *word_recognition_language = ri->WordRecognitionLanguage();
         float conf = ri->Confidence(level); // we don't care
         int x1, y1, x2, y2;
         ri->BoundingBox(level, &x1, &y1, &x2, &y2);
@@ -339,9 +340,14 @@ void *ReadFilesThread(void *voidparams) {
           nlohmann::json info = nlohmann::json::object();
           info["word"] = std::string(word);
           info["confidence"] = conf;
+          info["word_recognition_language"] = word_recognition_language;
+          info["word_is_from_dictionary"] = ri->WordIsFromDictionary();
+          info["word_is_number"] = ri->WordIsNumeric();
           info["bounding_box"] = nlohmann::json::object({{"x1", x1}, {"y1", y1}, {"x2", x2}, {"y2", y2}});
           info["SOPInstanceUID"] = filenamestring;
           std::string value = info.dump();
+          delete[] word_recognition_language;
+
           params->byThreadStudyInstanceUID.insert(std::pair<std::string, std::string>(key, value)); // should only add this pair once
         }
         // we can check against a safe list here
