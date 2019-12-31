@@ -19,6 +19,7 @@
 #include "gdcmDefs.h"
 #include "gdcmDirectory.h"
 #include "gdcmGlobal.h"
+#include "gdcmIconImageGenerator.h"
 #include "gdcmImageReader.h"
 #include "gdcmImageWriter.h"
 #include "gdcmReader.h"
@@ -70,12 +71,10 @@ void *ReadFilesThread(void *voidparams) {
     reader.SetFileName(filename);
     try {
       if (!reader.Read()) {
-        std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread
-                  << std::endl;
+        std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread << std::endl;
       }
     } catch (...) {
-      std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread
-                << std::endl;
+      std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread << std::endl;
       continue;
     }
 
@@ -153,8 +152,7 @@ void *ReadFilesThread(void *voidparams) {
     if (im.AreOverlaysInPixelData()) {     // we can also have curves in here ... what about curves?
       for (int i = 0; i < im.GetNumberOfOverlays(); i++) {
         fprintf(stdout, "Warning: we have found an overlay, we will remove it here.\n");
-        im.RemoveOverlay(
-            i); // TODO: overlays can hide some text - they are not a good way to anonymize a file
+        im.RemoveOverlay(i); // TODO: overlays can hide some text - they are not a good way to anonymize a file
       }
     }
     // what about the icon image? im.SetIconImage()
@@ -190,8 +188,7 @@ void *ReadFilesThread(void *voidparams) {
         // color data with not 8bit per channel!
         fprintf(stderr, "Error: found color data with non-8bit per channel! Unsupported!\n");
       }
-    } else if (gimage.GetPhotometricInterpretation() ==
-               gdcm::PhotometricInterpretation::MONOCHROME2) {
+    } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::MONOCHROME2) {
       // we can have 8bit or 16bit grayscales here
       if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
         fprintf(stdout, "We found MONOCHROME2 data with 8bit!\n");
@@ -210,8 +207,7 @@ void *ReadFilesThread(void *voidparams) {
             pixSetPixel(pixs, j, i, val);
           }
         }
-      } else if (gimage.GetPixelFormat() ==
-                 gdcm::PixelFormat::INT16) { // have not seen an example yet
+      } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::INT16) { // have not seen an example yet
         short *buffer16 = (short *)buffer;
         fprintf(stdout, "We found MONOCHROME2 data with 16bit!\n");
         for (int i = 0; i < HEIGHT; i++) {
@@ -229,9 +225,8 @@ void *ReadFilesThread(void *voidparams) {
             pixSetPixel(pixs, j, i, val);
           }
         }
-      } else if (gimage.GetPixelFormat() ==
-                 gdcm::PixelFormat::UINT16) { // we have one example that does not work - every
-                                              // pixel is 0
+      } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT16) { // we have one example that does not work - every
+                                                                         // pixel is 0
         // pixel representation is 0 -> unsigned short
         unsigned short *buffer16 = (unsigned short *)buffer;
         // anything non-zero?
@@ -239,8 +234,7 @@ void *ReadFilesThread(void *voidparams) {
           if (buffer[i] != 0)
             fprintf(stdout, "\"%d\" ", (int)(buffer[i]));
         }
-        fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short %dx%d)!\n", HEIGHT,
-                WIDTH);
+        fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short %dx%d)!\n", HEIGHT, WIDTH);
         for (int i = 0; i < HEIGHT; i++) {
           for (int j = 0; j < WIDTH; j++) {
             l_uint32 val;
@@ -250,9 +244,7 @@ void *ReadFilesThread(void *voidparams) {
             // if im is grayscale or color
             // fprintf(stdout, "%d %d ", ((unsigned char *)(&buffer16[i * WIDTH + j]))[0],
             // ((unsigned char *)(&buffer16[i * WIDTH + j]))[1]);
-            int v = floor((((double)buffer16[i * WIDTH + j] - gimage.GetPixelFormat().GetMin()) /
-                           (float)gimage.GetPixelFormat().GetMax()) *
-                          255);
+            int v = floor((((double)buffer16[i * WIDTH + j] - gimage.GetPixelFormat().GetMin()) / (float)gimage.GetPixelFormat().GetMax()) * 255);
             red = v; // (unsigned char)std::min(255, (buffer16[i * WIDTH + j]) / 255);
             // if (v != 0)
             //  fprintf(stdout, "%d (%lld %lld)\n", v, gimage.GetPixelFormat().GetMin(),
@@ -266,8 +258,7 @@ void *ReadFilesThread(void *voidparams) {
       } else {
         fprintf(stderr, "unknown pixel format in input... nothing is done\n");
       }
-    } else if (gimage.GetPhotometricInterpretation() ==
-               gdcm::PhotometricInterpretation::YBR_FULL_422) {
+    } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::YBR_FULL_422) {
       if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
         fprintf(stdout, "Found PhotometricInterpretation YBR_FULL_422 (UINT8)\n");
         unsigned char *ubuffer = (unsigned char *)buffer;
@@ -320,15 +311,13 @@ void *ReadFilesThread(void *voidparams) {
     // type, this would allow us to have the conversion below only done once.. but we would always
     // write the same image type back - not very nice...
     // http://gdcm.sourceforge.net/html/ConvertToQImage_8cxx-example.html
-    std::vector<std::string> safeList = {"Patient", "Name", "Study", "Protocol", "Date", "A",
-                                         "P",       "I",    "L",     "R",        "H"};
+    std::vector<std::string> safeList = {"Patient", "Name", "Study", "Protocol", "Date", "A", "P", "I", "L", "R", "H"};
 
     tesseract::TessBaseAPI *api = new tesseract::TessBaseAPI();
     api->Init(NULL, "eng+nor"); // this requires a nor.traineddata to be in the
                                 // /usr/local/Cellar/tesseract/4.1.1/share/tessdata directory
     api->SetImage(pixs);
-    api->SetSourceResolution(
-        70); // tried several, does not seem to make a different (prevents warning)
+    api->SetSourceResolution(70); // tried several, does not seem to make a different (prevents warning)
 
     api->Recognize(0);
     tesseract::ResultIterator *ri = api->GetIterator();
@@ -342,15 +331,13 @@ void *ReadFilesThread(void *voidparams) {
 
         // we can check against a safe list here
         if (std::find(safeList.begin(), safeList.end(), word) != safeList.end()) {
-          printf("skip-word: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1,
-                 x2, y2);
+          printf("skip-word: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
           continue; // found a safeList entry, don't do anything
         }
         // check if the word is a number? But we don't want to see dates either...
         // check for confidence
         if (conf < params->confidence) {
-          printf("skip-word - low confidence: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n",
-                 word, conf, x1, y1, x2, y2);
+          printf("skip-word - low confidence: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
           continue;
         }
         // if (strlen(word) == 1) {
@@ -358,8 +345,7 @@ void *ReadFilesThread(void *voidparams) {
         //  word, conf, x1, y1, x2, y2); continue;
         //}
 
-        printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2,
-               y2);
+        printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
         // mask out the bounding box with black
         if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::RGB) {
           if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) { // hopefully always true
@@ -373,8 +359,7 @@ void *ReadFilesThread(void *voidparams) {
               }
             }
           }
-        } else if (gimage.GetPhotometricInterpretation() ==
-                   gdcm::PhotometricInterpretation::MONOCHROME2) {
+        } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::MONOCHROME2) {
           // we can have 8bit or 16bit grayscales here
           if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) {
             unsigned char *ubuffer = (unsigned char *)buffer;
@@ -384,8 +369,7 @@ void *ReadFilesThread(void *voidparams) {
                 ubuffer[i * WIDTH + j] = 0;
               }
             }
-          } else if (gimage.GetPixelFormat() ==
-                     gdcm::PixelFormat::INT16) { // have not seen an example yet
+          } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::INT16) { // have not seen an example yet
             short *buffer16 = (short *)buffer;
             // fprintf(stdout, "We found MONOCHROME2 data with 16bit int16!\n");
             for (int i = y1; i < y2; i++) {
@@ -393,8 +377,7 @@ void *ReadFilesThread(void *voidparams) {
                 buffer16[i * WIDTH + j] = 0;
               }
             }
-          } else if (gimage.GetPixelFormat() ==
-                     gdcm::PixelFormat::UINT16) { // have not seen an example yet
+          } else if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT16) { // have not seen an example yet
             unsigned short *buffer16 = (unsigned short *)buffer;
             // fprintf(stdout, "We found MONOCHROME2 data with 16bit (unsigned short)!\n");
             for (int i = y1; i < y2; i++) {
@@ -403,12 +386,10 @@ void *ReadFilesThread(void *voidparams) {
               }
             }
           }
-        } else if (gimage.GetPhotometricInterpretation() ==
-                   gdcm::PhotometricInterpretation::YBR_FULL_422) {
+        } else if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::YBR_FULL_422) {
           if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) { // hopefully always true
                                                                      // change values in the buffer
-            unsigned char *ubuffer =
-                (unsigned char *)buffer; // but buffer has the wrong encoding now
+            unsigned char *ubuffer = (unsigned char *)buffer;        // but buffer has the wrong encoding now
             for (int i = y1; i < y2; i++) {
               for (int j = x1; j < x2; j++) { // hope this is ok for YBR data as well
                 ubuffer[(i * WIDTH + j) * 3 + 0] = 0;
@@ -435,8 +416,7 @@ void *ReadFilesThread(void *voidparams) {
     bv->SetLength((uint32_t)length);
     memcpy((void *)bv->GetPointer(), (void *)buffer, length);
     pixeldata.SetValue(*bv);
-    if (gimage.GetPhotometricInterpretation() ==
-        gdcm::PhotometricInterpretation::YBR_FULL_422) { // for YBR_FULL_422
+    if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::YBR_FULL_422) { // for YBR_FULL_422
       // we get an error if the transfer syntax is JPEG baseline 1
       gdcm::TransferSyntax ts = gdcm::TransferSyntax::ExplicitVRBigEndian;
       // fileToAnon.GetHeader().SetDataSetTransferSyntax(ts);
@@ -447,17 +427,16 @@ void *ReadFilesThread(void *voidparams) {
     // fileToAnon
     im.SetDataElement(pixeldata);
     // reader.SetImage(im);
-    // now set the icon as well, we want to rewrite it to make sure we don't have any information in there
+    // now set the icon as well, we want to rewrite it to make sure we don't have any information in there - overcautions yes!
     gdcm::IconImageGenerator iig;
     iig.AutoPixelMinMax(true);
     iig.SetPixmap(im);
-    const unsigned int idims[2] = { 64, 64 };
-    iig.SetOutpuDimensions(idims);
+    const unsigned int idims[2] = {64, 64};
+    iig.SetOutputDimensions(idims);
     iig.Generate();
     const gdcm::IconImage &icon = iig.GetIconImage();
     im.SetIconImage(icon);
 
-    
     // ok save the file again
     std::string imageInstanceUID = filenamestring;
     if (imageInstanceUID == "") {
@@ -492,8 +471,7 @@ void *ReadFilesThread(void *voidparams) {
     writer.SetFileName(outfilename.c_str());
     try {
       if (!writer.Write()) {
-        fprintf(stderr, "Error [#file: %d, thread: %d] writing file \"%s\" to \"%s\".\n", file,
-                params->thread, filename, outfilename.c_str());
+        fprintf(stderr, "Error [#file: %d, thread: %d] writing file \"%s\" to \"%s\".\n", file, params->thread, filename, outfilename.c_str());
       }
     } catch (const std::exception &ex) {
       std::cout << "Caught exception \"" << ex.what() << "\"\n";
@@ -511,8 +489,7 @@ void ShowFilenames(const threadparams &params) {
   std::cout << "end" << std::endl;
 }
 
-void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads,
-               float confidence) {
+void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, int numthreads, float confidence) {
   // \precondition: nfiles > 0
   assert(nfiles > 0);
 
@@ -522,30 +499,23 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x0010))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x0010));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x0010), gdcm::DictEntry("Private Creator Group CTP-LIKE", "0x0013, 0x0010",
-                                                 gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x0010),
+                                              gdcm::DictEntry("Private Creator Group CTP-LIKE", "0x0013, 0x0010", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x1010))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x1010));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x1010),
-      gdcm::DictEntry("ProjectName", "0x0013, 0x1010", gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x1010), gdcm::DictEntry("ProjectName", "0x0013, 0x1010", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x1013))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x1013));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x1013),
-      gdcm::DictEntry("SiteID", "0x0013, 0x1013", gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x1013), gdcm::DictEntry("SiteID", "0x0013, 0x1013", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (gl.GetDicts().GetPrivateDict().FindDictEntry(gdcm::Tag(0x0013, 0x1012))) {
     gl.GetDicts().GetPrivateDict().RemoveDictEntry(gdcm::Tag(0x0013, 0x1012));
   }
-  gl.GetDicts().GetPrivateDict().AddDictEntry(
-      gdcm::Tag(0x0013, 0x1012),
-      gdcm::DictEntry("SiteName", "0x0013, 0x1012", gdcm::VR::LO, gdcm::VM::VM1));
+  gl.GetDicts().GetPrivateDict().AddDictEntry(gdcm::Tag(0x0013, 0x1012), gdcm::DictEntry("SiteName", "0x0013, 0x1012", gdcm::VR::LO, gdcm::VM::VM1));
 
   if (nfiles <= numthreads) {
     numthreads = 1; // fallback if we don't have enough files to process
@@ -592,33 +562,26 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
 }
 
 struct Arg : public option::Arg {
-  static option::ArgStatus Required(const option::Option &option, bool) {
-    return option.arg == 0 ? option::ARG_ILLEGAL : option::ARG_OK;
-  }
-  static option::ArgStatus Empty(const option::Option &option, bool) {
-    return (option.arg == 0 || option.arg[0] == 0) ? option::ARG_OK : option::ARG_IGNORE;
-  }
+  static option::ArgStatus Required(const option::Option &option, bool) { return option.arg == 0 ? option::ARG_ILLEGAL : option::ARG_OK; }
+  static option::ArgStatus Empty(const option::Option &option, bool) { return (option.arg == 0 || option.arg[0] == 0) ? option::ARG_OK : option::ARG_IGNORE; }
 };
 
 enum optionIndex { UNKNOWN, HELP, INPUT, OUTPUT, NUMTHREADS, CONFIDENCE };
-const option::Descriptor usage[] = {
-    {UNKNOWN, 0, "", "", option::Arg::None,
-     "USAGE: rewritepixel [options]\n\n"
-     "Options:"},
-    {HELP, 0, "", "help", Arg::None,
-     "  --help  \tRewrite DICOM images to remove text. Read DICOM image series and write "
-     "out an anonymized version of the image data."},
-    {INPUT, 0, "i", "input", Arg::Required, "  --input, -i  \tInput directory."},
-    {OUTPUT, 0, "o", "output", Arg::Required, "  --output, -o  \tOutput directory."},
-    {CONFIDENCE, 0, "c", "confidence", Arg::Required,
-     "  --confidence, -c  \tConfidence threshold (0..100)."},
-    {NUMTHREADS, 0, "t", "numthreads", Arg::Required,
-     "  --numthreads, -t  \tHow many threads should be used (default 4)."},
-    {UNKNOWN, 0, "", "", Arg::None,
-     "\nExamples:\n"
-     "  rewritepixel --input directory --output directory\n"
-     "  rewritepixel --help\n"},
-    {0, 0, 0, 0, 0, 0}};
+const option::Descriptor usage[] = {{UNKNOWN, 0, "", "", option::Arg::None,
+                                     "USAGE: rewritepixel [options]\n\n"
+                                     "Options:"},
+                                    {HELP, 0, "", "help", Arg::None,
+                                     "  --help  \tRewrite DICOM images to remove text. Read DICOM image series and write "
+                                     "out an anonymized version of the image data."},
+                                    {INPUT, 0, "i", "input", Arg::Required, "  --input, -i  \tInput directory."},
+                                    {OUTPUT, 0, "o", "output", Arg::Required, "  --output, -o  \tOutput directory."},
+                                    {CONFIDENCE, 0, "c", "confidence", Arg::Required, "  --confidence, -c  \tConfidence threshold (0..100)."},
+                                    {NUMTHREADS, 0, "t", "numthreads", Arg::Required, "  --numthreads, -t  \tHow many threads should be used (default 4)."},
+                                    {UNKNOWN, 0, "", "", Arg::None,
+                                     "\nExamples:\n"
+                                     "  rewritepixel --input directory --output directory\n"
+                                     "  rewritepixel --help\n"},
+                                    {0, 0, 0, 0, 0, 0}};
 
 // get all files in all sub-directories, does some recursive calls so it might take a while
 // TODO: would be good to start anonymizing already while its still trying to find more files...
@@ -626,8 +589,7 @@ std::vector<std::string> listFiles(const std::string &path, std::vector<std::str
   if (auto dir = opendir(path.c_str())) {
     while (auto f = readdir(dir)) {
       // check for '.' and '..', but allow other names that start with a dot
-      if (((strlen(f->d_name) == 1) && (f->d_name[0] == '.')) ||
-          ((strlen(f->d_name) == 2) && (f->d_name[0] == '.') && (f->d_name[1] == '.')))
+      if (((strlen(f->d_name) == 1) && (f->d_name[0] == '.')) || ((strlen(f->d_name) == 2) && (f->d_name[0] == '.') && (f->d_name[1] == '.')))
         continue;
       if (f->d_type == DT_DIR) {
         std::vector<std::string> ff = listFiles(path + "/" + f->d_name + "/", files);
@@ -674,48 +636,48 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < parse.optionsCount(); ++i) {
     option::Option &opt = buffer[i];
     switch (opt.index()) {
-    case HELP:
-      // not possible, because handled further above and exits the program
-    case INPUT:
-      if (opt.arg) {
-        fprintf(stdout, "--input '%s'\n", opt.arg);
-        input = opt.arg;
-      } else {
-        fprintf(stdout, "--input needs a directory specified\n");
-        exit(-1);
-      }
-      break;
-    case OUTPUT:
-      if (opt.arg) {
-        fprintf(stdout, "--output '%s'\n", opt.arg);
-        output = opt.arg;
-      } else {
-        fprintf(stdout, "--output needs a directory specified\n");
-        exit(-1);
-      }
-      break;
-    case NUMTHREADS:
-      if (opt.arg) {
-        fprintf(stdout, "--numthreads %d\n", atoi(opt.arg));
-        numthreads = atoi(opt.arg);
-      } else {
-        fprintf(stdout, "--numthreads needs an integer specified\n");
-        exit(-1);
-      }
-      break;
-    case CONFIDENCE:
-      if (opt.arg) {
-        fprintf(stdout, "--confidence %f\n", atof(opt.arg));
-        confidence = atoi(opt.arg);
-      } else {
-        fprintf(stdout, "--confidence needs an integer specified (0..100)\n");
-        exit(-1);
-      }
-      break;
-    case UNKNOWN:
-      // not possible because Arg::Unknown returns ARG_ILLEGAL
-      // which aborts the parse with an error
-      break;
+      case HELP:
+        // not possible, because handled further above and exits the program
+      case INPUT:
+        if (opt.arg) {
+          fprintf(stdout, "--input '%s'\n", opt.arg);
+          input = opt.arg;
+        } else {
+          fprintf(stdout, "--input needs a directory specified\n");
+          exit(-1);
+        }
+        break;
+      case OUTPUT:
+        if (opt.arg) {
+          fprintf(stdout, "--output '%s'\n", opt.arg);
+          output = opt.arg;
+        } else {
+          fprintf(stdout, "--output needs a directory specified\n");
+          exit(-1);
+        }
+        break;
+      case NUMTHREADS:
+        if (opt.arg) {
+          fprintf(stdout, "--numthreads %d\n", atoi(opt.arg));
+          numthreads = atoi(opt.arg);
+        } else {
+          fprintf(stdout, "--numthreads needs an integer specified\n");
+          exit(-1);
+        }
+        break;
+      case CONFIDENCE:
+        if (opt.arg) {
+          fprintf(stdout, "--confidence %f\n", atof(opt.arg));
+          confidence = atoi(opt.arg);
+        } else {
+          fprintf(stdout, "--confidence needs an integer specified (0..100)\n");
+          exit(-1);
+        }
+        break;
+      case UNKNOWN:
+        // not possible because Arg::Unknown returns ARG_ILLEGAL
+        // which aborts the parse with an error
+        break;
     }
   }
 
