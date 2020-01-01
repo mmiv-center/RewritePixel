@@ -74,6 +74,7 @@ void *ReadFilesThread(void *voidparams) {
     try {
       if (!reader.Read()) {
         std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread << std::endl;
+        continue;
       }
     } catch (...) {
       std::cerr << "Failed to read: \"" << filename << "\" in thread " << params->thread << std::endl;
@@ -136,9 +137,9 @@ void *ReadFilesThread(void *voidparams) {
     b = strtol("0018", NULL, 16);
     std::string filenamestring = sf.ToString(gdcm::Tag(a, b));
 
-    // gdcm::Trace::SetDebug( true );
-    // gdcm::Trace::SetWarning( true );
-    // gdcm::Trace::SetError( true);
+    gdcm::Trace::SetDebug(true);
+    gdcm::Trace::SetWarning(true);
+    gdcm::Trace::SetError(true);
 
     // lets add the private group entries
     // gdcm::AddTag(gdcm::Tag(0x65010010), gdcm::VR::LO, "MY NEW DATASET",
@@ -170,7 +171,12 @@ void *ReadFilesThread(void *voidparams) {
     }
     if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::RGB) {
       if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) { // hopefully always true
-        fprintf(stdout, "We found RGB data with 8bit!\n");
+        fprintf(stdout, "We found RGB data with 8bit! HERE\n");
+        /* // we can check if the length is ok
+        if (length > WIDTH * HEIGHT * 3) {
+          length = WIDTH * HEIGHT * 3; // limit the length to what we can read (important for the icon generation for example - prevents floating point error)
+          fprintf(stdout, "SET LENGTH TO %d\n", length);
+        }*/
         unsigned char *ubuffer = (unsigned char *)buffer;
         for (int i = 0; i < HEIGHT; i++) {
           for (int j = 0; j < WIDTH; j++) {
@@ -327,6 +333,10 @@ void *ReadFilesThread(void *voidparams) {
     int counter = 0;
     if (ri != 0) {
       do {
+        if (ri->Empty(level)) {
+          fprintf(stdout, "ignore this level, its empty\n");
+          continue;
+        }
         const char *word = ri->GetUTF8Text(level);
         const char *word_recognition_language = ri->WordRecognitionLanguage();
         float conf = ri->Confidence(level); // we don't care
@@ -338,15 +348,14 @@ void *ReadFilesThread(void *voidparams) {
           snprintf(numObjects, 5, "%04d", counter++);
           std::string key = filenamestring + "_" + numObjects;
           nlohmann::json info = nlohmann::json::object();
-          info["word"] = std::string(word);
+          info["word"] = word ? std::string(word) : std::string("");
           info["confidence"] = conf;
-          info["word_recognition_language"] = word_recognition_language;
+          info["word_recognition_language"] = word_recognition_language ? std::string(word_recognition_language) : std::string("");
           info["word_is_from_dictionary"] = ri->WordIsFromDictionary();
           info["word_is_number"] = ri->WordIsNumeric();
           info["bounding_box"] = nlohmann::json::object({{"x1", x1}, {"y1", y1}, {"x2", x2}, {"y2", y2}});
           info["SOPInstanceUID"] = filenamestring;
           std::string value = info.dump();
-          delete[] word_recognition_language;
 
           params->byThreadStudyInstanceUID.insert(std::pair<std::string, std::string>(key, value)); // should only add this pair once
         }
@@ -425,6 +434,7 @@ void *ReadFilesThread(void *voidparams) {
           fprintf(stdout, "Error: unknown data\n");
         }
         delete[] word;
+
         // now mask the pixel values
       } while (ri->Next(level));
     }
@@ -434,7 +444,7 @@ void *ReadFilesThread(void *voidparams) {
     // https://github.com/malaterre/GDCM/blob/master/Applications/Cxx/gdcmimg.cxx)
     gdcm::DataElement pixeldata(gdcm::Tag(0x7fe0, 0x0010));
     gdcm::ByteValue *bv = new gdcm::ByteValue();
-    bv->SetLength((uint32_t)length);
+    bv->SetLength((uint32_t)length); // length here could be strange, something too big for example
     memcpy((void *)bv->GetPointer(), (void *)buffer, length);
     pixeldata.SetValue(*bv);
     if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::YBR_FULL_422) { // for YBR_FULL_422
@@ -444,19 +454,28 @@ void *ReadFilesThread(void *voidparams) {
       im.SetTransferSyntax(ts);
       // pixeldata.SetVLToUndefined();
     }
+    fprintf(stdout, "done...\n");
 
     // fileToAnon
     im.SetDataElement(pixeldata);
     // reader.SetImage(im);
     // now set the icon as well, we want to rewrite it to make sure we don't have any information in there - overcautions yes!
-    gdcm::IconImageGenerator iig;
-    iig.AutoPixelMinMax(true);
-    iig.SetPixmap(im);
-    const unsigned int idims[2] = {64, 64};
-    iig.SetOutputDimensions(idims);
-    iig.Generate();
-    const gdcm::IconImage &icon = iig.GetIconImage();
-    im.SetIconImage(icon);
+    if (gimage.GetPhotometricInterpretation() != gdcm::PhotometricInterpretation::RGB) {
+      gdcm::IconImageGenerator iig;
+      iig.AutoPixelMinMax(true);
+      iig.SetPixmap(im);
+      const unsigned int idims[2] = {64, 64};
+      iig.SetOutputDimensions(idims);
+      try { // this does not catch a float point exception, seems to be causing a crash inside
+        iig.Generate();
+      } catch (const std::exception &e) {
+        fprintf(stderr, "Failed to create icon from image %s\n", e.what());
+      }
+      const gdcm::IconImage &icon = iig.GetIconImage();
+      im.SetIconImage(icon);
+    } else {
+      fprintf(stdout, "skip creation of thumb nail image...\n");
+    }
 
     // ok save the file again
     std::string imageInstanceUID = filenamestring;
@@ -642,13 +661,17 @@ std::vector<std::string> listFiles(const std::string &path, std::vector<std::str
       if (f->d_type == DT_DIR) {
         std::vector<std::string> ff = listFiles(path + "/" + f->d_name + "/", files);
         // append the returned files to files
-        for (int i = 0; i < ff.size(); i++)
-          files.push_back(ff[i]);
+        for (int i = 0; i < ff.size(); i++) {
+          // problem is that we add files here several times if we don't check first.. don't understand why
+          if (std::find(files.begin(), files.end(), ff[i]) == files.end())
+            files.push_back(ff[i]);
+        }
       }
 
       if (f->d_type == DT_REG) {
         // cb(path + f->d_name);
-        files.push_back(path + "/" + f->d_name);
+        if (std::find(files.begin(), files.end(), path + "/" + f->d_name) == files.end())
+          files.push_back(path + "/" + f->d_name);
       }
     }
     closedir(dir);
