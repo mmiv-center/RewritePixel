@@ -438,6 +438,7 @@ void *ReadFilesThread(void *voidparams) {
         // now mask the pixel values
       } while (ri->Next(level));
     }
+    api->End();
     // im.SetBuffer(buffer);
     // fileToAnon.SetPixmap();
     // we need to set the pixel data again that we write, in fileToAnon  (good example
@@ -477,7 +478,7 @@ void *ReadFilesThread(void *voidparams) {
         im.SetIconImage(icon);
       }
     } else {
-      fprintf(stdout, "skip creation of thumb nail image...\n");
+      fprintf(stdout, "skip creation of thumb nail image for RGB, can create error on icon generation...\n");
     }
 
     // ok save the file again
@@ -580,7 +581,7 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
     params[thread].confidence = confidence;
     params[thread].saveMappings = false;
     if (storeMappingAsJSON.length() > 0) {
-      params[thread].saveMappings = true;
+      params[thread].saveMappings = true; // store the keys in the params section for later export
     }
 
     if (thread == nthreads - 1) {
@@ -607,7 +608,7 @@ void ReadFiles(size_t nfiles, const char *filenames[], const char *outputdir, in
   }
 
   if (storeMappingAsJSON.length() > 0) {
-    std::map<std::string, std::string> uidmappings;
+    std::map<std::string, std::string> uidmappings; // make the entries unique by storing them in a map
     for (unsigned int thread = 0; thread < nthreads; thread++) {
       for (std::map<std::string, std::string>::iterator it = params[thread].byThreadStudyInstanceUID.begin();
            it != params[thread].byThreadStudyInstanceUID.end(); ++it) {
