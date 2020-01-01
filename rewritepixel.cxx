@@ -466,13 +466,16 @@ void *ReadFilesThread(void *voidparams) {
       iig.SetPixmap(im);
       const unsigned int idims[2] = {64, 64};
       iig.SetOutputDimensions(idims);
+      bool b;
       try { // this does not catch a float point exception, seems to be causing a crash inside
-        iig.Generate();
+        b = iig.Generate();
       } catch (const std::exception &e) {
         fprintf(stderr, "Failed to create icon from image %s\n", e.what());
       }
-      const gdcm::IconImage &icon = iig.GetIconImage();
-      im.SetIconImage(icon);
+      if (b) {
+        const gdcm::IconImage &icon = iig.GetIconImage();
+        im.SetIconImage(icon);
+      }
     } else {
       fprintf(stdout, "skip creation of thumb nail image...\n");
     }
