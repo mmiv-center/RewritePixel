@@ -15,4 +15,13 @@ RUN cd /root && git clone https://github.com/mmiv-center/RewritePixel.git && cd 
 
 RUN cd /root/RewritePixel && cmake . && make
 
-ENTRYPOINT [ "/root/RewritePixel/rewritepixel" ]
+
+ENV ND_ENTRYPOINT="/startup.sh"
+
+RUN echo '#!/usr/bin/env bash' >> $ND_ENTRYPOINT \
+    && echo 'set +x' >> $ND_ENTRYPOINT \
+    && echo 'umask 0000' >> $ND_ENTRYPOINT \
+    && echo '/root/RewritePixel/rewritepixel $*' >> $ND_ENTRYPOINT \
+    && chmod 777 $ND_ENTRYPOINT
+
+ENTRYPOINT [ "/startup.sh" ]

@@ -81,54 +81,18 @@ void *ReadFilesThread(void *voidparams) {
       continue;
     }
 
-    // process sequences as well
-    // lets check if we can change the sequence that contains the ReferencedSOPInstanceUID inside
-    // the 0008,1115 sequence
-
-    gdcm::DataSet &dss = reader.GetFile().GetDataSet();
-    // look for any sequences and process them
-    gdcm::DataSet::Iterator it = dss.Begin();
-    for (; it != dss.End();) {
-      const gdcm::DataElement &de = *it;
-      gdcm::Tag tt = de.GetTag();
-      gdcm::SmartPointer<gdcm::SequenceOfItems> seq = de.GetValueAsSQ();
-      if (seq && seq->GetNumberOfItems()) {
-        // fprintf(stdout, "Found sequence in: %04x, %04x\n", tt.GetGroup(), tt.GetElement());
-        //	anonymizeSequence( params, &dss, &tt);
-      }
-      ++it;
-    }
-
-    /*    gdcm::Tag tsqur(0x0008,0x1115);
-    if (dss.FindDataElement(tsqur)) { // this work on the highest level (Tag is found in dss), but
-    what if we are already in a sequence?
-      //const gdcm::DataElement squr = dss.GetDataElement( tsqur );
-      anonymizeSequence( params, &dss, &tsqur);
-      } */
-
     // const gdcm::Image &image = reader.GetImage();
     // if we have the image here we can anonymize now and write again
     gdcm::Anonymizer anon;
     gdcm::File &fileToAnon = reader.GetFile();
     anon.SetFile(fileToAnon);
 
-    /*    gdcm::MediaStorage ms;
-        ms.SetFromFile(fileToAnon);
-        if (!gdcm::Defs::GetIODNameFromMediaStorage(ms)) {
-          std::cerr << "The Media Storage Type of your file is not supported: " << ms << std::endl;
-          std::cerr << "Please report" << std::endl;
-          continue;
-        } */
     gdcm::DataSet &ds = fileToAnon.GetDataSet();
 
     gdcm::StringFilter sf;
     sf.SetFile(fileToAnon);
 
-    // use the following tags
-    // https://wiki.cancerimagingarchive.net/display/Public/De-identification+Knowledge+Base
-
-    /*    Tag    Name    Action */
-
+    // get some leafs!
     int a = strtol("0020", NULL, 16); // Series Instance UID
     int b = strtol("000E", NULL, 16);
     std::string seriesdirname = sf.ToString(gdcm::Tag(a, b)); // always store by series
@@ -136,6 +100,18 @@ void *ReadFilesThread(void *voidparams) {
     a = strtol("0008", NULL, 16); // SOP Instance UID
     b = strtol("0018", NULL, 16);
     std::string filenamestring = sf.ToString(gdcm::Tag(a, b));
+
+    a = strtol("0020", NULL, 16); // Study Instance UID
+    b = strtol("000D", NULL, 16);
+    std::string studyinstanceuid = sf.ToString(gdcm::Tag(a, b));
+
+    a = strtol("0008", NULL, 16); // Series Description
+    b = strtol("103E", NULL, 16);
+    std::string seriesdescription = sf.ToString(gdcm::Tag(a, b));
+
+    a = strtol("0008", NULL, 16); // Study Description
+    b = strtol("1030", NULL, 16);
+    std::string studydescription = sf.ToString(gdcm::Tag(a, b));
 
     gdcm::Trace::SetDebug(true);
     gdcm::Trace::SetWarning(true);
@@ -158,17 +134,33 @@ void *ReadFilesThread(void *voidparams) {
         im.RemoveOverlay(i); // TODO: overlays can hide some text - they are not a good way to anonymize a file
       }
     }
-    // what about the icon image? im.SetIconImage()
     gdcm::Image gimage = reader.GetImage();
+
+    // debug what is in this image??
+
     PIX *pixs = pixCreate(WIDTH, HEIGHT, 32); // rgba colors
-    size_t length = im.GetBufferLength();
+    size_t length = gimage.GetBufferLength();
     fprintf(stdout, "%ld buffer length size of a single image is: %dx%d\n", length, HEIGHT, WIDTH);
     std::vector<char> vbuffer;
     vbuffer.resize(gimage.GetBufferLength());
     char *buffer = &vbuffer[0];
-    if (!im.GetBuffer(buffer)) {
+    if (!gimage.GetBuffer(buffer)) {
       fprintf(stderr, "Could not get buffer for image data\n");
     }
+    // we have a problem with one file:
+    bool anyNonZero = false;
+    for (int i = 0; i < length; i++) {
+      if (buffer[i] < buffer[0] || buffer[i] > buffer[0]) {
+        anyNonZero = true;
+        break;
+      }
+    }
+    if (anyNonZero) {
+      fprintf(stdout, "FOUND IMAGE INFORMATION (non-zero char)\n");
+    } else {
+      fprintf(stdout, "NO IMAGE INFORMATION FOUND!\n");
+    }
+
     if (gimage.GetPhotometricInterpretation() == gdcm::PhotometricInterpretation::RGB) {
       if (gimage.GetPixelFormat() == gdcm::PixelFormat::UINT8) { // hopefully always true
         fprintf(stdout, "We found RGB data with 8bit! HERE\n");
@@ -355,6 +347,11 @@ void *ReadFilesThread(void *voidparams) {
           info["word_is_number"] = ri->WordIsNumeric();
           info["bounding_box"] = nlohmann::json::object({{"x1", x1}, {"y1", y1}, {"x2", x2}, {"y2", y2}});
           info["SOPInstanceUID"] = filenamestring;
+          info["SeriesInstanceUID"] = seriesdirname;
+          info["StudyInstanceUID"] = studyinstanceuid;
+          info["SeriesDescription"] = seriesdescription;
+          info["StudyDescription"] = studydescription;
+          info["filename"] = filename;
           std::string value = info.dump();
 
           params->byThreadStudyInstanceUID.insert(std::pair<std::string, std::string>(key, value)); // should only add this pair once
@@ -498,7 +495,7 @@ void *ReadFilesThread(void *voidparams) {
       if (!(stat(dn.c_str(), &buffer) == 0)) {
         // DIR *dir = opendir(dn.c_str());
         // if ( ENOENT == errno)	{
-        mkdir(dn.c_str(), 0700);
+        mkdir(dn.c_str(), 0777);
       } // else {
         // closedir(dir);
       //}
