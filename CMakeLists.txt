@@ -3,7 +3,7 @@ cmake_minimum_required (VERSION 2.8.11)
 project (rewritepixel)
 
 # set (CMAKE_CXX_STANDARD 11)
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 17)
 
 FIND_LIBRARY(LIBXML2_LIBRARY NAMES xml2)
 FIND_LIBRARY(JPEG_LIBRARY NAMES jpeg)
