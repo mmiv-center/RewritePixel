@@ -2,7 +2,7 @@ FROM ubuntu:18.04
 
 RUN apt-get update -qq && apt-get install -yq build-essential \
     cmake git wget libxml2-dev libxslt1-dev libjpeg-dev expat \
-    libpng-dev libtiff-dev
+    libpng-dev libtiff-dev gcc-8
 
 # we want to use the norwegian language ontop of the english default
 RUN apt-get install -yq libtesseract-dev tesseract-ocr-nor libleptonica-dev
