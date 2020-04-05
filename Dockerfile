@@ -5,7 +5,8 @@ RUN apt-get update -qq && apt-get install -yq build-essential \
     libpng-dev libtiff-dev software-properties-common 
 
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test \
-    && apt install -yq gcc-8 g++-8
+    && apt install -yq gcc-8 g++-8 \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
 
 # we want to use the norwegian language ontop of the english default
 RUN apt-get install -yq libtesseract-dev tesseract-ocr-nor libleptonica-dev
