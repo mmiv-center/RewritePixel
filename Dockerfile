@@ -18,7 +18,7 @@ RUN cd /root && git clone https://github.com/mmiv-center/RewritePixel.git && cd 
     cmake -DCMAKE_BUILD_TYPE=Release -DGDCM_BUILD_SHARED_LIBS=ON ../GDCM-3.0.4 && \
     make
 
-RUN cd /root/RewritePixel && cmake -DCMAKE_BUILD_TYPE=Release . && make
+RUN cd /root/RewritePixel &&  cmake -DCMAKE_BUILD_TYPE=Release . && make
 
 
 ENV ND_ENTRYPOINT="/startup.sh"
