@@ -42,6 +42,7 @@
 #include <sys/types.h>
 
 #include <chrono>
+#include <filesystem>
 #include <map>
 #include <pthread.h>
 #include <stdio.h>
