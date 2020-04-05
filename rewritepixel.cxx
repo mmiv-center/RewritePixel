@@ -798,7 +798,7 @@ int main(int argc, char *argv[]) {
     for (unsigned int i = 0; i < nfiles; ++i) {
       filenames[i] = files[i].c_str();
       if (std::filesystem::is_symlink(filenames[i])) { // replace symlinks with real file names
-        filenames[i] = std::filesystem::read_symlink(filenames[i]);
+        filenames[i] = std::filesystem::read_symlink(filenames[i]).c_str();
       }
     }
     if (nfiles == 0) {
