@@ -796,6 +796,9 @@ int main(int argc, char *argv[]) {
     const char **filenames = new const char *[nfiles];
     for (unsigned int i = 0; i < nfiles; ++i) {
       filenames[i] = files[i].c_str();
+      if (std::filesystem::is_symlink(filenames[i])) { // replace symlinks with real file names
+        filenames[i] = std::filesystem::read_symlink(filenames[i]);
+      }
     }
     if (nfiles == 0) {
       fprintf(stdout, "Warning: No files found to process. Skip this step.\n");
