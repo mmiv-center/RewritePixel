@@ -360,8 +360,8 @@ void *ReadFilesThread(void *voidparams) {
 
         if (params->saveMappings) {
           // if we store the results we can write them into the thread storage
-          char numObjects[5];
-          snprintf(numObjects, 5, "%04d", counter++);
+          char numObjects[11];
+          snprintf(numObjects, 11, "%04d", counter++);
           std::string key = filenamestring + "_" + numObjects;
           nlohmann::json info = nlohmann::json::object();
           info["word"] = word ? std::string(word) : std::string("");
