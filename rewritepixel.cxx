@@ -320,6 +320,14 @@ void *ReadFilesThread(void *voidparams) {
     api->SetSourceResolution(70); // tried several, does not seem to make a different (prevents warning)
 
     api->Recognize(0);
+
+    // for debugging write out the pix
+    if (1) {
+      pixWrite("/tmp/tess_input.png", pixs, IFF_PNG);
+      Pix *page_pix = api->GetThresholdedImage();
+      pixWrite("/tmp/tess_thresholded.png", page_pix, IFF_PNG);
+    }
+
     tesseract::ResultIterator *ri = api->GetIterator();
     tesseract::PageIteratorLevel level = tesseract::RIL_WORD;
     int counter = 0;
@@ -334,6 +342,21 @@ void *ReadFilesThread(void *voidparams) {
         float conf = ri->Confidence(level); // we don't care
         int x1, y1, x2, y2;
         ri->BoundingBox(level, &x1, &y1, &x2, &y2);
+        // add some margin and make the selection bigger
+        int margin = 2;
+        x1 -= margin;
+        x2 += margin;
+        y1 -= margin;
+        y2 += margin;
+        if (x1 < 0)
+          x1 = 0;
+        if (x2 > WIDTH)
+          x2 = WIDTH;
+        if (y1 < 0)
+          y1 = 0;
+        if (y2 > HEIGHT)
+          y2 = HEIGHT;
+
         if (params->saveMappings) {
           // if we store the results we can write them into the thread storage
           char numObjects[5];
@@ -367,10 +390,11 @@ void *ReadFilesThread(void *voidparams) {
           printf("skip-word - low confidence: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
           continue;
         }
-        // if (strlen(word) == 1) {
-        //  printf("skip-word - single character: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n",
-        //  word, conf, x1, y1, x2, y2); continue;
-        //}
+
+        if (strlen(word) == 1) {
+          printf("skip-word - single character: '%s'; \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
+          continue;
+        }
 
         printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n", word, conf, x1, y1, x2, y2);
         // mask out the bounding box with black
@@ -773,6 +797,14 @@ int main(int argc, char *argv[]) {
     for (unsigned int i = 0; i < nfiles; ++i) {
       filenames[i] = files[i].c_str();
     }
+    if (nfiles == 0) {
+      fprintf(stdout, "Warning: No files found to process. Skip this step.\n");
+      return 0;
+    } else {
+      fprintf(stdout, "Info: processing %d files now.\n", nfiles);
+    }
+    if (numthreads > nfiles)
+      numthreads = nfiles;
     ReadFiles(nfiles, filenames, output.c_str(), numthreads, confidence, storeMappingAsJSON);
     delete[] filenames;
   } else {
