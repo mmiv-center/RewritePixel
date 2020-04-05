@@ -801,7 +801,7 @@ int main(int argc, char *argv[]) {
       fprintf(stdout, "Warning: No files found to process. Skip this step.\n");
       return 0;
     } else {
-      fprintf(stdout, "Info: processing %d files now.\n", nfiles);
+      fprintf(stdout, "Info: processing %ld files now.\n", nfiles);
     }
     if (numthreads > nfiles)
       numthreads = nfiles;
