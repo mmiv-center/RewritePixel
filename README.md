@@ -38,7 +38,7 @@ Examples:
   rewritepixel --help
 ```
 
-Notice: Don't forget that docker will not automatically see your systems directories. You need to use the '-v' option to make a folder visible inside the system before you can access data stored on your system. Here an example our data folder 'test_input' and 'test_output' are in the current users home directory.
+Notice: Don't forget that docker will not automatically see your systems directories. You need to use the '-v' option to make a folder visible inside the system before you can access data stored on your system. Here an example. Our data folder 'test_input' and 'test_output' are in the current users home directory.
 ```
-docker run -it --rm rewritepixel -v /home/<user name>/Documents/:/data -i /data/test_input/ -o /data/test_output/
+docker run -it -v /home/<user name>/Documents/:/data --rm rewritepixel -i /data/test_input/ -o /data/test_output/
 ```
